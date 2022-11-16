@@ -1,0 +1,34 @@
+
+
+
+
+= FC-HarDNet
+  - <train_my.py>
+  - used parameters: --config ./configs/hardnet_railsem19_my2.yml
+
+
+= RPnet_c
+  - <train_my_rpnet_c.py>
+  - used "/home/yu1/PycharmProjects/proj_seg_hardnet_a/runs/hardnet_railsem19_my2_20200502_1/cur/hardnet_railsem19_best_model.pkl" (as an initial weight)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

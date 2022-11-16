@@ -1,0 +1,32 @@
+model:
+    arch: rpnet_c
+data:
+    dataset: railsem19_seg_triplet_b
+    train_split: train
+    val_split: val
+    img_rows: 540
+    img_cols: 960
+    path: None
+    sbd_path: None
+training:
+    train_iters: 90000
+    batch_size: 8
+    val_interval: 100
+    n_workers: 0
+    print_interval: 100
+    optimizer:
+        name: 'sgd'
+        lr: 0.001
+        weight_decay: 0.0005
+        momentum: 0.9
+    loss:
+        name: 'bootstrapped_cross_entropy'
+        min_K: 8192
+        loss_th: 0.3
+        size_average: True
+        train_val: 0
+    lr_schedule: 
+        name: 'poly_lr'
+        max_iter: 90000
+    resume: None
+    finetune: None

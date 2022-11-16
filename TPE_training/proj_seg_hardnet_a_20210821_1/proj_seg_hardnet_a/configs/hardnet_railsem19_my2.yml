@@ -1,0 +1,31 @@
+model:
+    arch: hardnet
+data:
+    dataset: railsem19
+    train_split: train
+    val_split: val
+    img_rows: 540
+    img_cols: 960
+    path: /home/yu1/Desktop/temp_dir/Dataset_railsem19/rs19_val_20200417
+    sbd_path: /home/yu1/Desktop/temp_dir/Dataset_railsem19/rs19_val_20200417
+training:
+    train_iters: 90000
+    batch_size: 16
+    val_interval: 10000
+    n_workers: 0
+    print_interval: 100
+    optimizer:
+        name: 'sgd'
+        lr: 0.002
+        weight_decay: 0.0005
+        momentum: 0.9
+    loss:
+        name: 'bootstrapped_cross_entropy'
+        min_K: 4096
+        loss_th: 0.3
+        size_average: True
+    lr_schedule: 
+        name: 'poly_lr'
+        max_iter: 90000
+    resume: None
+    finetune: None
