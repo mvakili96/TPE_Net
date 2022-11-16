@@ -268,6 +268,7 @@ def train(cfg, writer, logger, fname_weight_init):
             ###
             imgs_raw_fl_n                        = data_batch['img_raw_fl_n']                     # (bs, 3, h_rsz, w_rsz)
             gt_imgs_label_seg                    = data_batch['gt_img_label_seg']                 # (bs, h_rsz, w_rsz)
+            gt_ins_pose                          = data_batch['gt_instances']
             # gt_imgs_label_seg_for_regu           = data_batch['gt_img_label_seg_for_regu']        # (bs, h_rsz, w_rsz)
             # gt_imgs_label_seg_for_regu2          = data_batch['gt_img_label_seg_for_regu2']       # (bs, h_rsz, w_rsz)
             gt_labelmap_centerline               = data_batch['gt_labelmap_centerline']           # (bs, 1, h_rsz, w_rsz)
@@ -277,13 +278,12 @@ def train(cfg, writer, logger, fname_weight_init):
 
             imgs_raw_fl_n           = imgs_raw_fl_n.to(device)
             gt_imgs_label_seg       = gt_imgs_label_seg.to(device)
+            gt_ins_pose             = gt_ins_pose.to(device)
             # gt_imgs_label_seg_for_regu = gt_imgs_label_seg_for_regu.to(device)
             # gt_imgs_label_seg_for_regu2 = gt_imgs_label_seg_for_regu2.to(device)
             gt_labelmap_centerline  = gt_labelmap_centerline.to(device)
             gt_labelmap_centerline_priority = gt_labelmap_centerline_priority.to(device)
             gt_labelmap_leftright   = gt_labelmap_leftright.to(device)
-
-
 
             ###
             scheduler.step()

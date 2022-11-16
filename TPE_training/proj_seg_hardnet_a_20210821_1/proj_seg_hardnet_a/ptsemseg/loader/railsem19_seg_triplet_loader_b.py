@@ -102,6 +102,8 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###///////////////////////////////////////////////////////////////////////////////////////////////////
         self.dir_img_raw_jpg    = dir_root_data_seg     + 'jpgs/rs19_val/'
         self.dir_label_seg_png  = dir_root_data_seg     + 'uint8/rs19_val_modified/'
+        self.dir_label_ins_json = dir_root_data_seg     + 'uint8/instance_json/'
+
         self.dir_label_seg_png_for_regu = dir_root_data_seg + 'uint8/rs19_val_modi_for_regu/'
         self.dir_label_seg_png_for_regu2 = dir_root_data_seg + 'uint8/rs19_val_for_regu_2/'
         self.dir_triplet_json   = dir_root_data_triplet + 'my_triplet_json/'
@@ -134,6 +136,11 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
             #       self.fnames_triplet_json["train"]: list for fnames only (for train)
             #       self.fnames_triplet_json["val"]  : list for fnames only (for val)
             #               (e.g. 'rs01001.txt', 'rs01002.txt', ...)
+
+        ###=============================================================================================
+        ### 6. read fname for all the instances
+        ###=============================================================================================
+        self.fnames_ins_json = myhelper_railsem19_b.read_fnames_trainval(self.dir_label_ins_json, 6000)
     #end
 
 
@@ -178,11 +185,12 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###=============================================================================================
         ### 1.1 set full-fname
         ###=============================================================================================
-        full_fname_img_raw_jpg    = self.dir_img_raw_jpg   + self.fnames_img_raw_jpg  [self.type_trainval][index]
-        full_fnames_label_seg_png = self.dir_label_seg_png + self.fnames_label_seg_png[self.type_trainval][index]
+        full_fname_img_raw_jpg    = self.dir_img_raw_jpg    + self.fnames_img_raw_jpg  [self.type_trainval][index]
+        full_fnames_label_seg_png = self.dir_label_seg_png  + self.fnames_label_seg_png[self.type_trainval][index]
+        full_fnames_ins_json      = self.dir_label_ins_json + self.fnames_ins_json[self.type_trainval][index]
         # full_fnames_label_seg_png_for_regu = self.dir_label_seg_png_for_regu + self.fnames_label_seg_png_for_regu[self.type_trainval][index]
         # full_fnames_label_seg_png_for_regu2 = self.dir_label_seg_png_for_regu2 + self.fnames_label_seg_png_for_regu2[self.type_trainval][index]
-        full_fname_triplet_json   = self.dir_triplet_json  + self.fnames_triplet_json [self.type_trainval][index]
+        full_fname_triplet_json   = self.dir_triplet_json   + self.fnames_triplet_json [self.type_trainval][index]
             # completed to set
             #   full_fname_img_raw_jpg
             #   full_fnames_label_seg_png
@@ -218,6 +226,15 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
             #       list_triplet_json
             # *see the following file for detailed info about 'list_triplet_json':
             #   </home/yu1/proj_avin/dataset/proj_rs19_jungwon_a/main_create_LRC_triplet_my.py>
+
+        ###=============================================================================================
+        ### 1.5 read list_ins_json (from file)
+        ###=============================================================================================
+        list_ins_json = json.load(open(full_fnames_ins_json, 'r'))
+        list_ins_json = np.array(list_ins_json)
+
+
+
 
         ### <<debugging>>
         if 0:
@@ -324,6 +341,7 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###
         output_img_raw             = torch.from_numpy(img_raw_rsz_fl_n).float()
         output_img_label_seg       = torch.from_numpy(img_label_seg_rsz_uint8).long()
+        output_ins_json            = torch.from_numpy(list_ins_json)
         # output_img_label_seg_for_regu = torch.from_numpy(img_label_seg_rsz_uint8_for_regu).long()
         # output_img_label_seg_for_regu2 = torch.from_numpy(img_label_seg_rsz_uint8_for_regu2).long()
         output_labelmap_centerline = torch.from_numpy(labelmap_centerline).float()
@@ -333,8 +351,9 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###
         output_final = {'img_raw_fl_n'                   : output_img_raw,                              # (3, h_rsz, w_rsz)
                         'gt_img_label_seg'               : output_img_label_seg,                        # (h_rsz, w_rsz)
-                        # 'gt_img_label_seg_for_regu'      : output_img_label_seg_for_regu,               # (h_rsz, w_rsz)
-                        # 'gt_img_label_seg_for_regu2'     : output_img_label_seg_for_regu2,              # (h_rsz, w_rsz)
+                        'gt_instances'                   : output_ins_json,                             # (h_rsz, w_rsz)
+                        # 'gt_img_label_seg_for_regu'      : output_img_label_seg_for_regu,             # (h_rsz, w_rsz)
+                        # 'gt_img_label_seg_for_regu2'     : output_img_label_seg_for_regu2,            # (h_rsz, w_rsz)
                         'gt_labelmap_centerline'         : output_labelmap_centerline,                  # (1, h_rsz, w_rsz)
                         'gt_labelmap_leftright'          : output_labelmap_leftright,                   # (2, h_rsz, w_rsz)
                         'gt_labelmap_centerline_priority' : output_labelmap_centerline_priority}
