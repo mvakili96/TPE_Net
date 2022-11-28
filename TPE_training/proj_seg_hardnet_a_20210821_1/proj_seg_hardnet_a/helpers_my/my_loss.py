@@ -29,6 +29,117 @@ def L1_loss(x_est, x_gt, b_sigmoid=False):
     return loss_b
 #end
 
+def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
+    #////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    # x_gt: (bs, 20, 21600, 2)
+    # x_est: (bs, N, h, w)
+    #////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    # Measures variance term for each instance
+    def Variance_term(instance_vectors,mean_vector,margin):
+        all_distances        = torch.cdist(instance_vectors, mean_vector, p=2)
+        all_distances_margin = all_distances[all_distances > margin]
+
+        if all_distances_margin.shape[0] != 0:
+            tot_num_pixels = instance_vectors.shape[0]
+            sum_distances  = torch.sum(torch.pow(all_distances_margin,2))
+            mean_distance  = sum_distances/tot_num_pixels
+        else:
+            mean_distance = 0
+
+        return mean_distance
+
+    # Measures distance term for a batch
+    def Dist_term(all_means,margin):
+        # all_means: (bs, maximum_num_ins, e.g. 10)
+
+        bs                = all_means.shape[0]
+        tot_num_instances = all_means.shape[1]
+        num_output_layers = all_means.shape[2]
+
+        distances_between_means = -torch.ones((bs,tot_num_instances,tot_num_instances))
+        for image_counter,means_this_image in enumerate(all_means):
+            for i in range(tot_num_instances):
+                mean_this_i = means_this_image[i]
+                for j in range(tot_num_instances):
+                    mean_this_j = means_this_image[j]
+                    if i == j or distances_between_means[image_counter,i,j] != -1 or mean_this_i[mean_this_i != -10].shape[0] == 0 or mean_this_j[mean_this_j != -10].shape[0] == 0:
+                        continue
+                    else:
+                        mean_this_i = mean_this_i.reshape(1,num_output_layers)
+                        mean_this_j = mean_this_j.reshape(1,num_output_layers)
+                        distances_between_means[image_counter, i, j] = max(0,margin - torch.cdist(mean_this_i, mean_this_j, p=2))
+                        distances_between_means[image_counter, j, i] = max(0,margin - torch.cdist(mean_this_i, mean_this_j, p=2))
+
+        condition1 = (distances_between_means >= 0)
+        distances_between_means = distances_between_means[condition1]
+        distances_between_means_pow2 = torch.pow(distances_between_means,2)
+
+        output = torch.mean(distances_between_means_pow2)
+
+        return output
+
+    # Measures regularization term for a batch
+    def Reg_term(all_means):
+        bs                = all_means.shape[0]
+        tot_num_instances = all_means.shape[1]
+        num_output_layers = all_means.shape[2]
+
+        origin = torch.zeros((1,num_output_layers))
+        distances_to_origin = -torch.ones((bs, tot_num_instances))
+
+        for image_counter,means_this_image in enumerate(all_means):
+            for i in range(tot_num_instances):
+                mean_this_i = means_this_image[i]
+                if mean_this_i[mean_this_i != -10].shape[0] == 0:
+                    continue
+                else:
+                    mean_this_i = mean_this_i.reshape(1, num_output_layers)
+                    distances_to_origin[image_counter,i] = torch.cdist(mean_this_i, origin, p=2)
+
+        output = torch.mean(distances_to_origin[distances_to_origin >= 0])
+
+        return output
+
+
+
+    batch_size        = x_est.shape[0]
+    num_output_layer  = x_est.shape[1]
+    max_num_instances = x_gt.shape[1]
+
+    var_loss  = -torch.ones(batch_size,max_num_instances)
+    all_means = -10*torch.ones(batch_size,max_num_instances,num_output_layer)
+
+    for image_cnt in range(batch_size):
+        all_instances_this_gt_indices = x_gt[image_cnt]
+        x_est_this                    = x_est[image_cnt].transpose(0, 1).transpose(1, 2).contiguous()
+        for i,instance_this_gt_indices in enumerate(all_instances_this_gt_indices):
+            instance_this_gt_indices  = instance_this_gt_indices[instance_this_gt_indices > 0]
+
+            if instance_this_gt_indices.shape[0] == 0:
+                continue
+            else:
+                instance_this_gt_indices = instance_this_gt_indices.view(-1, 2)
+
+            instance_this_vectors = torch.zeros((instance_this_gt_indices.shape[0], num_output_layer))
+            for j,XY in enumerate(instance_this_gt_indices):
+                instance_this_vectors[j]  = x_est_this[XY[0],XY[1]]
+
+            instance_mean_vector = torch.mean(instance_this_vectors, dim = 0).reshape(1,num_output_layer)
+            var_loss_this        = Variance_term(instance_this_vectors,instance_mean_vector,var_margin)
+
+            var_loss[image_cnt,i]  = var_loss_this
+            all_means[image_cnt,i] = instance_mean_vector
+
+    dis_loss      = Dist_term(all_means,dis_margin)
+    reg_loss      = 0.01*Reg_term(all_means)
+    variance_loss = torch.mean(var_loss[var_loss >= 0])
+
+    total_loss_this_batch = dis_loss + reg_loss + variance_loss
+
+
+    return total_loss_this_batch,dis_loss,reg_loss,variance_loss
+
 
 ########################################################################################################################
 ###

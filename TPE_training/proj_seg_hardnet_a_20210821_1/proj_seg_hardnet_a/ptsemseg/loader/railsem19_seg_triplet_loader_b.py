@@ -85,7 +85,7 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###=============================================================================================
         self.rgb_mean               = np.array([128.0, 128.0, 128.0])/255.0     # for pixel value 0.0 ~ 1.0
         self.rgb_std                = np.array([1.0, 1.0, 1.0])                 # for pixel value 0.0 ~ 1.0
-        self.n_classes              = 3
+        self.n_classes              = 16
 
         self.size_img_ori           = {'h': 1080, 'w': 1920}    # FIXED, DO NOT EDIT
         self.size_img_rsz           = {'h': 540,  'w': 960}

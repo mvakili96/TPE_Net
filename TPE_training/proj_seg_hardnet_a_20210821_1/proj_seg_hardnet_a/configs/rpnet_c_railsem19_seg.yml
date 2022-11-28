@@ -13,7 +13,7 @@ training:
     batch_size: 8
     val_interval: 100
     n_workers: 0
-    print_interval: 100
+    print_interval: 20
     optimizer:
         name: 'sgd'
         lr: 0.001

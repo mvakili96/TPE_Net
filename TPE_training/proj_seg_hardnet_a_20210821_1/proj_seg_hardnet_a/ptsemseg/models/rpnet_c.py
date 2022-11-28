@@ -335,7 +335,7 @@ class rpnet_c(nn.Module):
     ############################################################################################################
     ### rpnet_c::__init__()
     ############################################################################################################
-    def __init__(self, n_classes=3):
+    def __init__(self, n_classes=16):
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         super(rpnet_c, self).__init__()
 
@@ -578,13 +578,12 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         ### rpnet_decoder_hmap_center (for rpnet)
         ###================================================================================================
-        #self.rpnet_decoder_hmap = MyDecoder(out_channels=1)
-        ch_in_rpnet_decoder_centerline = ch_output_fc_hardnet_a + ch_output_fc_hardnet_b
+        # ch_in_rpnet_decoder_centerline = ch_output_fc_hardnet_a + ch_output_fc_hardnet_b
 
 
-        self.rpnet_decoder_centerline = nn.Conv2d(in_channels=ch_in_rpnet_decoder_centerline,
-                                                  out_channels=1, kernel_size=1, stride=1,
-                                                  padding=0, bias=True)
+        # self.rpnet_decoder_centerline = nn.Conv2d(in_channels=ch_in_rpnet_decoder_centerline,
+        #                                           out_channels=1, kernel_size=1, stride=1,
+        #                                           padding=0, bias=True)
 
         # self.rpnet_decoder_centerline_one = nn.Conv2d(in_channels=8,
         #                                           out_channels=1, kernel_size=1, stride=1,
@@ -682,8 +681,8 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         ### [rpnet] insert semantic segmentation output (final conv outcome) to backbone_rpnet
         ###================================================================================================
-        out_seg_after_relu = self.relu_on_finalConv(out_seg)
-        backbone_rpnet = torch.cat([backbone_rpnet, out_seg_after_relu], 1)
+        # out_seg_after_relu = self.relu_on_finalConv(out_seg)
+        # backbone_rpnet = torch.cat([backbone_rpnet, out_seg_after_relu], 1)
 
             # completed to set
             #       backbone_rpnet (for rpnet)
@@ -692,7 +691,7 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         ### [rpnet] rpnet_decoder_hmap_center
         ###================================================================================================
-        out_centerline = self.rpnet_decoder_centerline(backbone_rpnet)
+        # out_centerline = self.rpnet_decoder_centerline(backbone_rpnet)
         # out_leftright  = self.rpnet_decoder_leftright(backbone_rpnet)
 
         # out_centerline_zero = self.rpnet_decoder_centerline(backbone_rpnet)
@@ -705,7 +704,7 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         ### [FC-HarDNet] interpolate for final result
         ###================================================================================================
-        out_seg_final = F.interpolate(out_seg, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
+        out_ins_final = F.interpolate(out_seg, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
             # completed to set
             #       out_seg_final
 
@@ -713,7 +712,7 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         ### [rpnet] interpolate for final result
         ###================================================================================================
-        out_centerline_final = F.interpolate(out_centerline, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
+        # out_centerline_final = F.interpolate(out_centerline, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
 
         # out_leftright_final  = F.interpolate(out_leftright, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
 
@@ -734,7 +733,7 @@ class rpnet_c(nn.Module):
         #                 out_centerline_for_regu[img_index, 0, row_counter, min(w-1,indices[0, row_counter, col_counter]+rail_width.long()) ] = 1.
         #                 out_centerline_for_regu[img_index, 0, row_counter, max(0,indices[0, row_counter, col_counter]-rail_width.long()) ] = 1.
 
-        return out_seg_final, out_centerline_final
+        return out_ins_final
     #end
 
 
@@ -751,7 +750,7 @@ if __name__ == '__main__':
 
 
     ###
-    net = rpnet_c(n_classes=3).cuda()
+    net = rpnet_c(n_classes=16).cuda()
 
 
     ###
