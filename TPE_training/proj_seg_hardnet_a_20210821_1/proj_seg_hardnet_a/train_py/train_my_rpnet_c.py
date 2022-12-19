@@ -221,7 +221,6 @@ def train(cfg, writer, logger, fname_weight_init):
         for data_batch in t_loader_batch:
             ###
             i += 1
-            print(i)
             start_ts = time.time()
 
 
@@ -306,13 +305,13 @@ def train(cfg, writer, logger, fname_weight_init):
                 loss_accum_variance_validation    = 0
                 loss_accum_instance_validation    = 0
                 num_loss_validation = 0
-                if (i + 1) % 200 == 0:
+                if (i + 1) % 1000 == 0:
                     for data_batch_validation in v_loader_batch:
                         imgs_raw_fl_n          = data_batch_validation['img_raw_fl_n']                            # (bs, 3, h_rsz, w_rsz)
-                        gt_ins_positions       = data_batch['gt_instances']
+                        gt_ins_positions       = data_batch_validation['gt_instances']
                         gt_imgs_label_seg      = data_batch_validation['gt_img_label_seg']                        # (bs, h_rsz, w_rsz)
                         gt_labelmap_centerline = data_batch_validation['gt_labelmap_centerline']                  # (bs, 1, h_rsz, w_rsz)
-                        gt_labelmap_leftright  = data_batch['gt_labelmap_leftright']
+                        gt_labelmap_leftright  = data_batch_validation['gt_labelmap_leftright']
 
                         imgs_raw_fl_n          = imgs_raw_fl_n.to(device)
                         gt_ins_positions       = gt_ins_positions.to(device)
@@ -391,7 +390,7 @@ if __name__ == "__main__":
     ###============================================================================================================
 
     fname_config = '../configs/rpnet_c_railsem19_seg.yml'
-    fname_weight_init = '../runs/hardnet/cur/MybestSoFar.pkl'
+    fname_weight_init = '../runs/hardnet/cur/hardnet_best.pkl'
 
     ###============================================================================================================
     ### (1) set parser

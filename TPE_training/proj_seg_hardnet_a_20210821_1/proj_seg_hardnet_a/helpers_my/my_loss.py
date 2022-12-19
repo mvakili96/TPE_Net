@@ -53,31 +53,29 @@ def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
     def Dist_term(all_means,margin):
         # all_means: (bs, maximum_num_ins, e.g. 10)
 
-        bs                = all_means.shape[0]
-        tot_num_instances = all_means.shape[1]
-        num_output_layers = all_means.shape[2]
-
-        distances_between_means = -torch.ones((bs,tot_num_instances,tot_num_instances))
+        output = 0
+        tot_num_pairs = 0
         for image_counter,means_this_image in enumerate(all_means):
-            for i in range(tot_num_instances):
-                mean_this_i = means_this_image[i]
-                for j in range(tot_num_instances):
-                    mean_this_j = means_this_image[j]
-                    if i == j or distances_between_means[image_counter,i,j] != -1 or mean_this_i[mean_this_i != -10].shape[0] == 0 or mean_this_j[mean_this_j != -10].shape[0] == 0:
-                        continue
-                    else:
-                        mean_this_i = mean_this_i.reshape(1,num_output_layers)
-                        mean_this_j = mean_this_j.reshape(1,num_output_layers)
-                        distances_between_means[image_counter, i, j] = max(0,margin - torch.cdist(mean_this_i, mean_this_j, p=2))
-                        distances_between_means[image_counter, j, i] = max(0,margin - torch.cdist(mean_this_i, mean_this_j, p=2))
+            condition = means_this_image[:,0] != -10000
+            means_this_image_filtered = means_this_image[condition.flatten()]
+            num_instances_this = means_this_image_filtered.shape[0]
+            if num_instances_this == 0:
+                continue
 
-        condition1 = (distances_between_means >= 0)
-        distances_between_means = distances_between_means[condition1]
-        distances_between_means_pow2 = torch.pow(distances_between_means,2)
+            combinations_indices = torch.combinations(torch.tensor(range(num_instances_this)))
+            tot_num_pairs += combinations_indices.shape[0]
 
-        output = torch.mean(distances_between_means_pow2)
+            candidates1 = means_this_image_filtered[combinations_indices[:,0].long()]
+            candidates2 = means_this_image_filtered[combinations_indices[:,1].long()]
 
-        return output
+            distances_between_means_this          = (candidates1-candidates2).pow(2).sum(1).sqrt()
+            marginal_distances_between_means_this = torch.clamp(margin-distances_between_means_this,min=0)
+            sum_marginal_distances_between_means_this = marginal_distances_between_means_this.pow(2).sum()
+            output += sum_marginal_distances_between_means_this
+
+        output_final = output/tot_num_pairs
+
+        return output_final
 
     # Measures regularization term for a batch
     def Reg_term(all_means):
@@ -86,20 +84,21 @@ def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
         num_output_layers = all_means.shape[2]
 
         origin = torch.zeros((1,num_output_layers))
-        distances_to_origin = -torch.ones((bs, tot_num_instances))
-
+        output = 0
+        num_valid_instances = 0
         for image_counter,means_this_image in enumerate(all_means):
-            for i in range(tot_num_instances):
-                mean_this_i = means_this_image[i]
-                if mean_this_i[mean_this_i != -10].shape[0] == 0:
-                    continue
-                else:
-                    mean_this_i = mean_this_i.reshape(1, num_output_layers)
-                    distances_to_origin[image_counter,i] = torch.cdist(mean_this_i, origin, p=2)
+            condition = means_this_image[:,0] != -10000
+            means_this_image_filtered = means_this_image[condition.flatten()]
+            if means_this_image_filtered.shape[0] == 0:
+                continue
+            else:
+                num_valid_instances += means_this_image_filtered.shape[0]
+            distances_to_origin = torch.cdist(means_this_image_filtered, origin, p=2)
+            output += distances_to_origin.sum()
 
-        output = torch.mean(distances_to_origin[distances_to_origin >= 0])
+        output_final = output / num_valid_instances
 
-        return output
+        return output_final
 
 
 
@@ -108,7 +107,7 @@ def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
     max_num_instances = x_gt.shape[1]
 
     var_loss  = -torch.ones(batch_size,max_num_instances)
-    all_means = -10*torch.ones(batch_size,max_num_instances,num_output_layer)
+    all_means = -10000*torch.ones(batch_size,max_num_instances,num_output_layer)
 
     for image_cnt in range(batch_size):
         all_instances_this_gt_indices = x_gt[image_cnt]
@@ -121,9 +120,10 @@ def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
             else:
                 instance_this_gt_indices = instance_this_gt_indices.view(-1, 2)
 
-            instance_this_vectors = torch.zeros((instance_this_gt_indices.shape[0], num_output_layer))
-            for j,XY in enumerate(instance_this_gt_indices):
-                instance_this_vectors[j]  = x_est_this[XY[0],XY[1]]
+            instance_this_vectors = x_est_this[instance_this_gt_indices[:,0].long(),instance_this_gt_indices[:,1].long()]
+            # instance_this_vectors = torch.zeros((instance_this_gt_indices.shape[0], num_output_layer))
+            # for j,XY in enumerate(instance_this_gt_indices):
+            #     instance_this_vectors[j]  = x_est_this[XY[0],XY[1]]
 
             instance_mean_vector = torch.mean(instance_this_vectors, dim = 0).reshape(1,num_output_layer)
             var_loss_this        = Variance_term(instance_this_vectors,instance_mean_vector,var_margin)
@@ -132,10 +132,11 @@ def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
             all_means[image_cnt,i] = instance_mean_vector
 
     dis_loss      = Dist_term(all_means,dis_margin)
-    reg_loss      = 0.01*Reg_term(all_means)
+    reg_loss      = Reg_term(all_means)
     variance_loss = torch.mean(var_loss[var_loss >= 0])
 
-    total_loss_this_batch = dis_loss + reg_loss + variance_loss
+
+    total_loss_this_batch = dis_loss + 0.001*reg_loss + variance_loss
 
 
     return total_loss_this_batch,dis_loss,reg_loss,variance_loss
