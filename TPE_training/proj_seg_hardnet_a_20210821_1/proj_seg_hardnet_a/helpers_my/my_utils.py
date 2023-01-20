@@ -73,7 +73,7 @@ def load_weights_to_model(model, fname_weights_to_be_loaded):
 
     ###
     for key in state_dict_weights:              # state_dict[]:       modules loaded from pretrained-weights file
-        if key in state_dict_model:     # model_state_dict[]: modules from empty model
+        if key in state_dict_model:             # model_state_dict[]: modules from empty model
             ###------------------------------------------------------------------------------
             ### if shape is not consistent, just skip.
             ###------------------------------------------------------------------------------

@@ -129,7 +129,7 @@ def train(cfg, writer, logger, fname_weight_init):
     ###---------------------------------------------------------------------------------------------------
     ### freeze model of only FC-HarDNet part
     ###---------------------------------------------------------------------------------------------------
-    if 0:
+    if 1:
         ###
         for param_this in model.base.parameters():
             param_this.requires_grad = False
@@ -146,10 +146,15 @@ def train(cfg, writer, logger, fname_weight_init):
         #end
 
         ###
-        model.finalConv.bias.requires_grad = False
-        model.finalConv.weight.requires_grad = False
+        # model.finalConv.bias.requires_grad = False
+        # model.finalConv.weight.requires_grad = False
+        #end
 
         ###
+        # for param_this in model.finalConv.parameters():
+        #     param_this.requires_grad = False
+        #end
+
         for param_this in model.transUpBlocks.parameters():
             param_this.requires_grad = False
         #end
@@ -219,166 +224,170 @@ def train(cfg, writer, logger, fname_weight_init):
     ###============================================================================================================
     while i <= cfg["training"]["train_iters"] and flag:
         for data_batch in t_loader_batch:
-            ###
-            i += 1
-            start_ts = time.time()
-
-
-            ###
-            imgs_raw_fl_n                        = data_batch['img_raw_fl_n']                     # (bs, 3, h_rsz, w_rsz)
-            gt_imgs_label_seg                    = data_batch['gt_img_label_seg']                 # (bs, h_rsz, w_rsz)
-            gt_ins_pose                          = data_batch['gt_instances']
-            gt_labelmap_centerline               = data_batch['gt_labelmap_centerline']           # (bs, 1, h_rsz, w_rsz)
-            gt_labelmap_leftright                = data_batch['gt_labelmap_leftright']            # (bs, 2, h_rsz, w_rsz)
-            gt_labelmap_centerline_priority      = data_batch['gt_labelmap_centerline_priority']           # (bs, 1, h_rsz, w_rsz)
-
-
-            imgs_raw_fl_n           = imgs_raw_fl_n.to(device)
-            gt_imgs_label_seg       = gt_imgs_label_seg.to(device)
-            gt_ins_pose             = gt_ins_pose.to(device)
-            gt_labelmap_centerline  = gt_labelmap_centerline.to(device)
-            gt_labelmap_centerline_priority = gt_labelmap_centerline_priority.to(device)
-            gt_labelmap_leftright   = gt_labelmap_leftright.to(device)
-
-            ###
-            scheduler.step()
-            model.train()
-            optimizer.zero_grad()
-
-            ###
-            output_instance = model(imgs_raw_fl_n)
-            ###============================================================================================================
-            ### (8) Loss
-            ###============================================================================================================
-            loss_instance, dis_loss, reg_loss, var_loss = my_loss.Discriminative_loss(output_instance,gt_ins_pose,0.5,3)
-            loss_this = loss_instance
-
-            ###
-            loss_this.backward()
-            optimizer.step()
-
-            ###
-            c_lr = scheduler.get_lr()
-
-            ###
-            time_meter.update(time.time() - start_ts)
-
-            ###
-            loss_accum_all += loss_this.item()
-            loss_accum_var += var_loss.item()
-            loss_accum_dis += dis_loss.item()
-            loss_accum_reg += reg_loss.item()
-
-
-            num_loss += 1
-
-
-            ### print (on demand)
-            if (i + 1) % cfg["training"]["print_interval"] == 0:
+            with torch.autograd.set_detect_anomaly(True):
                 ###
-                fmt_str = "Iter [{:d}/{:d}]  Loss (all): {:.7f}, Loss (var): {:.7f}, Loss (dis): {:.7f}, Loss (reg): {:.7f}, Time/Image: {:.7f}  lr={:.7f}"
-
-                print_str = fmt_str.format(
-                    i + 1,
-                    cfg["training"]["train_iters"],
-                    loss_accum_all        / num_loss,
-                    loss_accum_var        / num_loss,
-                    loss_accum_dis        / num_loss,
-                    loss_accum_reg        / num_loss,
-                    time_meter.avg / cfg["training"]["batch_size"],
-                    c_lr[0],
-                )
-
-                print(print_str)
-                logger.info(print_str)
-                writer.add_scalar("loss/train_loss", loss_this.item(), i + 1)
-                time_meter.reset()
-            #end
+                i += 1
+                start_ts = time.time()
 
 
-            ################################################################################################
-            ### validate (on demand)
-            ################################################################################################
-            if (i + 1) % cfg["training"]["val_interval"] == 0 or (i + 1) == cfg["training"]["train_iters"]:
-                loss_accum_regularizer_validation = 0
-                loss_accum_distance_validation    = 0
-                loss_accum_variance_validation    = 0
-                loss_accum_instance_validation    = 0
-                num_loss_validation = 0
-                if (i + 1) % 1000 == 0:
-                    for data_batch_validation in v_loader_batch:
-                        imgs_raw_fl_n          = data_batch_validation['img_raw_fl_n']                            # (bs, 3, h_rsz, w_rsz)
-                        gt_ins_positions       = data_batch_validation['gt_instances']
-                        gt_imgs_label_seg      = data_batch_validation['gt_img_label_seg']                        # (bs, h_rsz, w_rsz)
-                        gt_labelmap_centerline = data_batch_validation['gt_labelmap_centerline']                  # (bs, 1, h_rsz, w_rsz)
-                        gt_labelmap_leftright  = data_batch_validation['gt_labelmap_leftright']
-
-                        imgs_raw_fl_n          = imgs_raw_fl_n.to(device)
-                        gt_ins_positions       = gt_ins_positions.to(device)
-                        gt_imgs_label_seg      = gt_imgs_label_seg.to(device)
-                        gt_labelmap_centerline = gt_labelmap_centerline.to(device)
-                        gt_labelmap_leftright  = gt_labelmap_leftright.to(device)
+                ###
+                imgs_raw_fl_n                        = data_batch['img_raw_fl_n']                     # (bs, 3, h_rsz, w_rsz)
+                gt_imgs_label_seg                    = data_batch['gt_img_label_seg']                 # (bs, h_rsz, w_rsz)
+                gt_ins_pose                          = data_batch['gt_instances']
+                gt_labelmap_centerline               = data_batch['gt_labelmap_centerline']           # (bs, 1, h_rsz, w_rsz)
+                gt_labelmap_leftright                = data_batch['gt_labelmap_leftright']            # (bs, 2, h_rsz, w_rsz)
+                gt_labelmap_centerline_priority      = data_batch['gt_labelmap_centerline_priority']           # (bs, 1, h_rsz, w_rsz)
 
 
-                        v_output_instance =  model(imgs_raw_fl_n)
+                imgs_raw_fl_n           = imgs_raw_fl_n.to(device)
+                gt_imgs_label_seg       = gt_imgs_label_seg.to(device)
+                gt_ins_pose             = gt_ins_pose.to(device)
+                gt_labelmap_centerline  = gt_labelmap_centerline.to(device)
+                gt_labelmap_centerline_priority = gt_labelmap_centerline_priority.to(device)
+                gt_labelmap_leftright   = gt_labelmap_leftright.to(device)
 
-                        loss_ins, distance_loss, regularizer_loss, variance_loss = my_loss.Discriminative_loss(v_output_instance,gt_ins_positions,0.5,3)
+                ###
+                scheduler.step()
+                model.train()
+                optimizer.zero_grad()
+
+                ###
+                output_instance = model(imgs_raw_fl_n)
+                ###============================================================================================================
+                ### (8) Loss
+                ###============================================================================================================
+                loss_instance, dis_loss, reg_loss, var_loss = my_loss.Discriminative_loss(output_instance,gt_ins_pose,0.5,3)
+                loss_this = loss_instance
+                ###
+                loss_this.backward()
+                optimizer.step()
+
+                ###
+                c_lr = scheduler.get_lr()
+
+                ###
+                time_meter.update(time.time() - start_ts)
+
+                ###
+                loss_accum_all += loss_this.item()
+                loss_accum_var += var_loss.item()
+                loss_accum_dis += dis_loss.item()
+                loss_accum_reg += reg_loss.item()
+
+                # print(i)
+                # print(var_loss.item())
+                # print(dis_loss.item())
+                # print(reg_loss.item())
+
+                num_loss += 1
 
 
-                        loss_accum_instance_validation     += loss_ins.item()
-                        loss_accum_variance_validation     += variance_loss.item()
-                        loss_accum_distance_validation     += distance_loss.item()
-                        loss_accum_regularizer_validation  += regularizer_loss.item()
-
-
-                        num_loss_validation += 1
-
-                    fmt_str = "(VALIDATION) Iter [{:d}/{:d}], Loss (instance): {:.7f}, Loss (var): {:.7f}, Loss (dis): {:.7f}, Loss (reg): {:.7f}"
+                ### print (on demand)
+                if (i + 1) % cfg["training"]["print_interval"] == 0:
+                    ###
+                    fmt_str = "Iter [{:d}/{:d}]  Loss (all): {:.7f}, Loss (var): {:.7f}, Loss (dis): {:.7f}, Loss (reg): {:.7f}, Time/Image: {:.7f}  lr={:.7f}"
 
                     print_str = fmt_str.format(
                         i + 1,
                         cfg["training"]["train_iters"],
-                        loss_accum_instance_validation / num_loss_validation,
-                        loss_accum_variance_validation / num_loss_validation,
-                        loss_accum_distance_validation / num_loss_validation,
-                        loss_accum_regularizer_validation  / num_loss_validation
+                        loss_accum_all        / num_loss,
+                        loss_accum_var        / num_loss,
+                        loss_accum_dis        / num_loss,
+                        loss_accum_reg        / num_loss,
+                        time_meter.avg / cfg["training"]["batch_size"],
+                        c_lr[0],
                     )
 
                     print(print_str)
-
-                #//////////////////////////////////////////////////////////////////////////////////////////
-                # temp routine
-                #//////////////////////////////////////////////////////////////////////////////////////////
-
-                ###
-                state = {"epoch": i + 1,
-                         "model_state": model.state_dict(),
-                         "best_loss": best_loss_hmap}
-
-                ###
-                # save_path = os.path.join(
-                #     writer.file_writer.get_logdir(),
-                #     "{}_{}_best_model.pkl".format(cfg["model"]["arch"], cfg["data"]["dataset"]),
-                # )
-                save_path = 'Mybest_' + str(i+1) + '.pkl'
-
-                ###
-                torch.save(state, save_path)
-                #//////////////////////////////////////////////////////////////////////////////////////////
+                    logger.info(print_str)
+                    writer.add_scalar("loss/train_loss", loss_this.item(), i + 1)
+                    time_meter.reset()
+                #end
 
 
-            #end
-            ################################################################################################
+                ################################################################################################
+                ### validate (on demand)
+                ################################################################################################
+                if (i + 1) % cfg["training"]["val_interval"] == 0 or (i + 1) == cfg["training"]["train_iters"]:
+                    loss_accum_regularizer_validation = 0
+                    loss_accum_distance_validation    = 0
+                    loss_accum_variance_validation    = 0
+                    loss_accum_instance_validation    = 0
+                    num_loss_validation = 0
+                    if (i + 1) % 1000 == 0:
+                        for data_batch_validation in v_loader_batch:
+                            imgs_raw_fl_n          = data_batch_validation['img_raw_fl_n']                            # (bs, 3, h_rsz, w_rsz)
+                            gt_ins_positions       = data_batch_validation['gt_instances']
+                            gt_imgs_label_seg      = data_batch_validation['gt_img_label_seg']                        # (bs, h_rsz, w_rsz)
+                            gt_labelmap_centerline = data_batch_validation['gt_labelmap_centerline']                  # (bs, 1, h_rsz, w_rsz)
+                            gt_labelmap_leftright  = data_batch_validation['gt_labelmap_leftright']
+
+                            imgs_raw_fl_n          = imgs_raw_fl_n.to(device)
+                            gt_ins_positions       = gt_ins_positions.to(device)
+                            gt_imgs_label_seg      = gt_imgs_label_seg.to(device)
+                            gt_labelmap_centerline = gt_labelmap_centerline.to(device)
+                            gt_labelmap_leftright  = gt_labelmap_leftright.to(device)
 
 
-            ### check if it reaches max iterations
-            if (i + 1) == cfg["training"]["train_iters"]:
-                flag = False
-                break
+                            v_output_instance =  model(imgs_raw_fl_n)
+
+                            loss_ins, distance_loss, regularizer_loss, variance_loss = my_loss.Discriminative_loss(v_output_instance,gt_ins_positions,0.5,3)
+
+
+                            loss_accum_instance_validation     += loss_ins.item()
+                            loss_accum_variance_validation     += variance_loss.item()
+                            loss_accum_distance_validation     += distance_loss.item()
+                            loss_accum_regularizer_validation  += regularizer_loss.item()
+
+
+                            num_loss_validation += 1
+
+                        fmt_str = "(VALIDATION) Iter [{:d}/{:d}], Loss (instance): {:.7f}, Loss (var): {:.7f}, Loss (dis): {:.7f}, Loss (reg): {:.7f}"
+
+                        print_str = fmt_str.format(
+                            i + 1,
+                            cfg["training"]["train_iters"],
+                            loss_accum_instance_validation / num_loss_validation,
+                            loss_accum_variance_validation / num_loss_validation,
+                            loss_accum_distance_validation / num_loss_validation,
+                            loss_accum_regularizer_validation  / num_loss_validation
+                        )
+
+                        print(print_str)
+
+                    #//////////////////////////////////////////////////////////////////////////////////////////
+                    # temp routine
+                    #//////////////////////////////////////////////////////////////////////////////////////////
+
+                    ###
+                    state = {"epoch": i + 1,
+                             "model_state": model.state_dict(),
+                             "best_loss": best_loss_hmap}
+
+                    ###
+                    # save_path = os.path.join(
+                    #     writer.file_writer.get_logdir(),
+                    #     "{}_{}_best_model.pkl".format(cfg["model"]["arch"], cfg["data"]["dataset"]),
+                    # )
+                    save_path = 'Mybest_' + str(i+1) + '.pkl'
+
+                    ###
+                    torch.save(state, save_path)
+                    #//////////////////////////////////////////////////////////////////////////////////////////
+
+
+                #end
+                ################################################################################################
+
+
+                ### check if it reaches max iterations
+                if (i + 1) == cfg["training"]["train_iters"]:
+                    flag = False
+                    break
+                #end
             #end
         #end
     #end
-#end
 
 ########################################################################################################################
 ########################################################################################################################

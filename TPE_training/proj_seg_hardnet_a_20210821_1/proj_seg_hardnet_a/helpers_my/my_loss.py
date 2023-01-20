@@ -121,9 +121,6 @@ def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
                 instance_this_gt_indices = instance_this_gt_indices.view(-1, 2)
 
             instance_this_vectors = x_est_this[instance_this_gt_indices[:,0].long(),instance_this_gt_indices[:,1].long()]
-            # instance_this_vectors = torch.zeros((instance_this_gt_indices.shape[0], num_output_layer))
-            # for j,XY in enumerate(instance_this_gt_indices):
-            #     instance_this_vectors[j]  = x_est_this[XY[0],XY[1]]
 
             instance_mean_vector = torch.mean(instance_this_vectors, dim = 0).reshape(1,num_output_layer)
             var_loss_this        = Variance_term(instance_this_vectors,instance_mean_vector,var_margin)

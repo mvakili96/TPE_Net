@@ -1,11 +1,13 @@
 # 2020/7/21
 # Jungwon Kang
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import collections
+
+
+from ..utils import is_tracing
 
 
 ########################################################################################################################
@@ -237,7 +239,7 @@ class TransitionUp(nn.Module):
         if concat:                            
             out = torch.cat([out, skip], 1)
         #end
-          
+
         return out
     #end
 #end
@@ -295,6 +297,82 @@ class MyDecoder(nn.Sequential):
         return super().forward(x)
     #end
 #end
+
+
+########################################################################################################################
+### 4. Spatial Convolution
+########################################################################################################################
+
+class SpatialConv(nn.Module):
+    # SCNN
+
+    def __init__(self, num_channels=128):
+        super().__init__()
+        self.conv_d = nn.Conv2d(num_channels, num_channels, (1, 3), padding = 'same')
+        self.conv_u = nn.Conv2d(num_channels, num_channels, (1, 3), padding = 'same')
+        self.conv_r = nn.Conv2d(num_channels, num_channels, (3, 1), padding = 'same')
+        self.conv_l = nn.Conv2d(num_channels, num_channels, (3, 1), padding = 'same')
+        self.BN     = nn.BatchNorm2d(num_channels)
+        self._adjust_initializations(num_channels=num_channels)
+
+    def _adjust_initializations(self, num_channels=128):
+        # https://github.com/XingangPan/SCNN/issues/82
+        bound = math.sqrt(2.0 / (num_channels * 9 * 5))
+        nn.init.uniform_(self.conv_d.weight, -bound, bound)
+        nn.init.uniform_(self.conv_u.weight, -bound, bound)
+        nn.init.uniform_(self.conv_r.weight, -bound, bound)
+        nn.init.uniform_(self.conv_l.weight, -bound, bound)
+
+    def forward(self, input):
+        output = input
+
+        # if is_tracing():
+        # Down
+        for i in range(1, output.shape[2]):
+            temp = torch.zeros(output.shape).type(output.type())
+            temp[:, :, i:i + 1, :] = output[:, :, i:i + 1, :].add(F.relu(self.conv_d(output[:, :, i - 1:i, :])))
+            output = output + temp
+            # output[:, :, i:i + 1, :] = output[:, :, i:i + 1, :].add(F.relu(self.conv_d(output[:, :, i - 1:i, :])))
+        # Up
+        for i in range(output.shape[2] - 2, 0, -1):
+            temp = torch.zeros(output.shape).type(output.type())
+            temp[:, :, i:i + 1, :] = output[:, :, i:i + 1, :].add(F.relu(self.conv_u(output[:, :, i + 1:i + 2, :])))
+            output = output + temp
+            # output[:, :, i:i + 1, :] = output[:, :, i:i + 1, :].add(F.relu(self.conv_u(output[:, :, i + 1:i + 2, :])))
+        # Right
+        for i in range(1, output.shape[3]):
+            temp = torch.zeros(output.shape).type(output.type())
+            temp[:, :, :, i:i + 1] = output[:, :, :, i:i + 1].add(F.relu(self.conv_r(output[:, :, :, i - 1:i])))
+            output = output + temp
+            # output[:, :, :, i:i + 1] = output[:, :, :, i:i + 1].add(F.relu(self.conv_r(output[:, :, :, i - 1:i])))
+        # Left
+        for i in range(output.shape[3] - 2, 0, -1):
+            temp = torch.zeros(output.shape).type(output.type())
+            temp[:, :, :, i:i + 1] = output[:, :, :, i:i + 1].add(F.relu(self.conv_l(output[:, :, :, i + 1:i + 2])))
+            output = output + temp
+            # output[:, :, :, i:i + 1] = output[:, :, :, i:i + 1].add(F.relu(self.conv_l(output[:, :, :, i + 1:i + 2])))
+
+        # else:
+        #     # First one remains unchanged (according to the original paper), why not add a relu afterwards?
+        #     # Update and send to next
+        #     # Down
+        #     for i in range(1, output.shape[2]):
+        #         output[:, :, i:i + 1, :].add_(F.relu(self.conv_d(output[:, :, i - 1:i, :])))
+        #     # Up
+        #     for i in range(output.shape[2] - 2, 0, -1):
+        #         output[:, :, i:i + 1, :].add_(F.relu(self.conv_u(output[:, :, i + 1:i + 2, :])))
+        #     # Right
+        #     for i in range(1, output.shape[3]):
+        #         output[:, :, :, i:i + 1].add_(F.relu(self.conv_r(output[:, :, :, i - 1:i])))
+        #     # Left
+        #     for i in range(output.shape[3] - 2, 0, -1):
+        #         output[:, :, :, i:i + 1].add_(F.relu(self.conv_l(output[:, :, :, i + 1:i + 2])))
+
+
+        output_final = self.BN(output)
+
+        return output_final
+
 
 
 """
@@ -432,7 +510,11 @@ class rpnet_c(nn.Module):
             ###------------------------------------------------------------------------------
 
             ### append ch into skip_connection_channel_counts
-            skip_connection_channel_counts.append(ch)
+            if i_blk == 3:
+                skip_connection_channel_counts.append(2*ch)
+            else:
+                skip_connection_channel_counts.append(ch)
+
 
             ### append HarDBlock
             self.base.append( blk )                                               # APPEND
@@ -444,6 +526,11 @@ class rpnet_c(nn.Module):
             if i_blk < (blks-1):
                 self.shortcut_layers.append( len(self.base)-1 )
             #end
+
+            if i_blk == 3:
+                self.spatialConv = SpatialConv(num_channels=ch)                   # APPEND
+                self.SCNNindex = len(self.base)
+
 
 
             ###------------------------------------------------------------------------------
@@ -461,6 +548,7 @@ class rpnet_c(nn.Module):
             if i_blk < blks-1:
                 self.base.append( nn.AvgPool2d(kernel_size=2, stride=2) )         # APPEND
             #end
+
 
 
             ###///////////////////////////////////////////////////////////////////////////////////////
@@ -500,6 +588,7 @@ class rpnet_c(nn.Module):
         #---------------------------------------------------------------------------------------------------------
 
 
+
         ###================================================================================================
         ### up-network
         ###================================================================================================
@@ -512,6 +601,7 @@ class rpnet_c(nn.Module):
         self.transUpBlocks = nn.ModuleList([])
         self.denseBlocksUp = nn.ModuleList([])
         self.conv1x1_up    = nn.ModuleList([])
+
 
         ###
         for i in range(n_blocks-1,-1,-1):
@@ -554,6 +644,7 @@ class rpnet_c(nn.Module):
         #end
 
 
+
         ###================================================================================================
         ### final conv (for FC-HarDNet)
         ###================================================================================================
@@ -565,7 +656,7 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         ### relu for outcome of final conv (for rpnet)
         ###================================================================================================
-        self.relu_on_finalConv = nn.ReLU(inplace=True)
+        # self.relu_on_finalConv = nn.ReLU(inplace=True)
 
 
         ###================================================================================================
@@ -620,7 +711,6 @@ class rpnet_c(nn.Module):
     ### hardnet::forward()
     ############################################################################################################
     def forward(self, x):
-
         ###================================================================================================
         ### init
         ###================================================================================================
@@ -638,7 +728,10 @@ class rpnet_c(nn.Module):
             ###
             ###------------------------------------------------------------------------------
             x = self.base[idx_module](x)
-            # print(x.shape)
+
+            if idx_module == self.SCNNindex - 1:
+                SpatialConv_output = self.spatialConv(x)
+                # print(self.spatialConv.conv_d.weight.data)
 
 
             ###------------------------------------------------------------------------------
@@ -658,6 +751,8 @@ class rpnet_c(nn.Module):
         for i in range(self.n_blocks):
             skip = skip_connections.pop()
             out_seg = self.transUpBlocks[i](out_seg, skip, True)
+            if i == 0:
+                out_seg = torch.cat([out_seg,SpatialConv_output],1)
             out_seg = self.conv1x1_up[i](out_seg)
             out_seg = self.denseBlocksUp[i](out_seg)
         #end
@@ -675,13 +770,13 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         ### [FC-HarDNet] final conv
         ###================================================================================================
-        out_seg = self.finalConv(out_seg)
+        out_seg = self.finalConv(backbone_rpnet)
 
 
         ###================================================================================================
         ### [rpnet] insert semantic segmentation output (final conv outcome) to backbone_rpnet
         ###================================================================================================
-        # out_seg_after_relu = self.relu_on_finalConv(out_seg)
+        # out_seg = self.relu_on_finalConv(out_seg)
         # backbone_rpnet = torch.cat([backbone_rpnet, out_seg_after_relu], 1)
 
             # completed to set

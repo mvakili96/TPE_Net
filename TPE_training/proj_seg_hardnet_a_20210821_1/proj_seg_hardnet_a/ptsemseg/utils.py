@@ -5,6 +5,7 @@ import os
 import logging
 import datetime
 import numpy as np
+import torch
 
 from collections import OrderedDict
 
@@ -57,3 +58,12 @@ def get_logger(logdir):
     logger.addHandler(hdlr)
     logger.setLevel(logging.INFO)
     return logger
+
+def is_tracing() -> bool:
+    # https://github.com/pytorch/pytorch/issues/42448
+    if torch.__version__ >= '1.7.0':
+        return torch.jit.is_tracing()
+    elif torch.__version__ >= '1.6.0':
+        return torch._C._is_tracing()
+    else:
+        return False
