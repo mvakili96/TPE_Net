@@ -10,7 +10,7 @@ import torch.nn.functional as F
 ########################################################################################################################
 ###
 ########################################################################################################################
-def L1_loss(x_est, x_gt, b_sigmoid=False):
+def L1_loss(x_est, x_gt, n_chann, b_sigmoid=False):
     #////////////////////////////////////////////////////////////////////////////////////////////////////////////
     # x_est: (bs, 1, h, w), here 1 is the number of class
     # x_gt: (bs, 1, h, w)
@@ -18,9 +18,13 @@ def L1_loss(x_est, x_gt, b_sigmoid=False):
 
     # L1 loss
     # https://pytorch.org/docs/master/generated/torch.nn.L1Loss.html
+    if n_chann == 3:
+        peak_val = 1 - 1e-4
+    elif n_chann == 1:
+        peak_val = 100
 
     if b_sigmoid is True:
-        x_est = torch.clamp(x_est, min=1e-4, max=100)
+        x_est = torch.clamp(x_est, min=1e-4, max=peak_val)
     #end
 
     loss_a = nn.L1Loss()

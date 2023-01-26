@@ -9,6 +9,8 @@ data:
     path: None
     sbd_path: None
 training:
+    num_seg_classes: 19
+    num_reg_channels: 3
     train_iters: 90000
     batch_size: 8
     val_interval: 100

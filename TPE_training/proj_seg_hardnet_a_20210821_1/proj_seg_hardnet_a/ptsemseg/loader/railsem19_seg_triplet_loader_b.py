@@ -59,7 +59,9 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
                  type_trainval="train",
                  b_do_transform=False,
                  augmentations=None,
-                 output_size_hmap="size_fmap"):
+                 output_size_hmap="size_fmap",
+                 n_classes_seg = 19,
+                 n_channels_reg = 3):
 
         # output_size_hmap : "size_img_rsz" or "size_fmap"
 
@@ -85,7 +87,8 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###=============================================================================================
         self.rgb_mean               = np.array([128.0, 128.0, 128.0])/255.0     # for pixel value 0.0 ~ 1.0
         self.rgb_std                = np.array([1.0, 1.0, 1.0])                 # for pixel value 0.0 ~ 1.0
-        self.n_classes              = 3
+        self.n_classes              = n_classes_seg
+        self.n_channels             = n_channels_reg
 
         self.size_img_ori           = {'h': 1080, 'w': 1920}    # FIXED, DO NOT EDIT
         self.size_img_rsz           = {'h': 540,  'w': 960}
@@ -101,46 +104,60 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ### read fnames
         ###///////////////////////////////////////////////////////////////////////////////////////////////////
         self.dir_img_raw_jpg    = dir_root_data_seg     + 'jpgs/rs19_val/'
-        self.dir_label_seg_png  = dir_root_data_seg     + 'uint8/rs19_val_modified/'
+        if self.n_classes == 19:
+            self.dir_label_seg_png  = dir_root_data_seg     + 'uint8/rs19_val/'
+        elif self.n_classes == 3:
+            self.dir_label_seg_png = dir_root_data_seg + 'uint8/rs19_val_modified/'
+
         self.dir_label_ins_json = dir_root_data_seg     + 'uint8/instance_json/'
 
-        self.dir_label_seg_png_for_regu = dir_root_data_seg + 'uint8/rs19_val_modi_for_regu/'
-        self.dir_label_seg_png_for_regu2 = dir_root_data_seg + 'uint8/rs19_val_for_regu_2/'
+
         self.dir_triplet_json   = dir_root_data_triplet + 'my_triplet_json/'
+
+        if self.n_channels == 1:
+            self.dir_triplet_image   = dir_root_data_triplet + 'my_triplet_image/'
+        elif self.n_channels == 3:
+            self.dir_triplet_C = dir_root_data_triplet + 'my_triplet_C/'
+            self.dir_triplet_L = dir_root_data_triplet + 'my_triplet_L/'
+            self.dir_triplet_R = dir_root_data_triplet + 'my_triplet_R/'
 
 
         ###=============================================================================================
         ### 3. read fnames for all the raw-imgs
         ###=============================================================================================
         self.fnames_img_raw_jpg = myhelper_railsem19_b.read_fnames_trainval(self.dir_img_raw_jpg, 6000)
-            # completed to set
-            #       self.fnames_img_raw_jpg["train"]: list for fnames only (for train)
-            #       self.fnames_img_raw_jpg["val"]  : list for fnames only (for val)
-            #               (e.g. 'rs01001.jpg', 'rs01002.jpg', ...)
 
 
         ###=============================================================================================
         ### 4. read fnames for all the seg-labels
         ###=============================================================================================
         self.fnames_label_seg_png = myhelper_railsem19_b.read_fnames_trainval(self.dir_label_seg_png, 6000)
-        # self.fnames_label_seg_png_for_regu = myhelper_railsem19_b.read_fnames_trainval(self.dir_label_seg_png_for_regu, 7000)
-        # self.fnames_label_seg_png_for_regu2 = myhelper_railsem19_b.read_fnames_trainval(self.dir_label_seg_png_for_regu2, 7000)
+
 
 
 
         ###=============================================================================================
-        ### 5. read fname for all the triplets
+        ### 5. read fname for all the triplets (json)
         ###=============================================================================================
         self.fnames_triplet_json = myhelper_railsem19_b.read_fnames_trainval(self.dir_triplet_json, 6000)
-            # completed to set
-            #       self.fnames_triplet_json["train"]: list for fnames only (for train)
-            #       self.fnames_triplet_json["val"]  : list for fnames only (for val)
-            #               (e.g. 'rs01001.txt', 'rs01002.txt', ...)
+
 
         ###=============================================================================================
         ### 6. read fname for all the instances
         ###=============================================================================================
         self.fnames_ins_json = myhelper_railsem19_b.read_fnames_trainval(self.dir_label_ins_json, 6000)
+
+        ###=============================================================================================
+        ### 7. read fname for all the triplets (image)
+        ###=============================================================================================
+        if self.n_channels == 1:
+            self.fnames_triplet_image = myhelper_railsem19_b.read_fnames_trainval(self.dir_triplet_image, 6000)
+        elif self.n_channels == 3:
+            self.fnames_triplet_C = myhelper_railsem19_b.read_fnames_trainval(self.dir_triplet_C, 6000)
+            self.fnames_triplet_L = myhelper_railsem19_b.read_fnames_trainval(self.dir_triplet_L, 6000)
+            self.fnames_triplet_R = myhelper_railsem19_b.read_fnames_trainval(self.dir_triplet_R, 6000)
+
+
     #end
 
 
@@ -188,13 +205,15 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         full_fname_img_raw_jpg    = self.dir_img_raw_jpg    + self.fnames_img_raw_jpg  [self.type_trainval][index]
         full_fnames_label_seg_png = self.dir_label_seg_png  + self.fnames_label_seg_png[self.type_trainval][index]
         full_fnames_ins_json      = self.dir_label_ins_json + self.fnames_ins_json[self.type_trainval][index]
-        # full_fnames_label_seg_png_for_regu = self.dir_label_seg_png_for_regu + self.fnames_label_seg_png_for_regu[self.type_trainval][index]
-        # full_fnames_label_seg_png_for_regu2 = self.dir_label_seg_png_for_regu2 + self.fnames_label_seg_png_for_regu2[self.type_trainval][index]
         full_fname_triplet_json   = self.dir_triplet_json   + self.fnames_triplet_json [self.type_trainval][index]
-            # completed to set
-            #   full_fname_img_raw_jpg
-            #   full_fnames_label_seg_png
-            #   full_fname_triplet_json
+        if self.n_channels == 1:
+            full_fname_triplet_image  = self.dir_triplet_image  + self.fnames_triplet_image [self.type_trainval][index]
+        elif self.n_channels == 3:
+            full_fname_triplet_C  = self.dir_triplet_C  + self.fnames_triplet_C [self.type_trainval][index]
+            full_fname_triplet_L  = self.dir_triplet_L  + self.fnames_triplet_L [self.type_trainval][index]
+            full_fname_triplet_R  = self.dir_triplet_R  + self.fnames_triplet_R [self.type_trainval][index]
+
+
 
 
         ###=============================================================================================
@@ -211,21 +230,13 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###=============================================================================================
         img_label_seg_rsz_uint8 = myhelper_railsem19_b.read_label_seg_png_from_file(full_fnames_label_seg_png,
                                                                                     self.size_img_rsz)
-        # img_label_seg_rsz_uint8_for_regu = myhelper_railsem19_b.read_label_seg_png_from_file(full_fnames_label_seg_png_for_regu,
-        #                                                                             self.size_img_rsz)
-        # img_label_seg_rsz_uint8_for_regu2 = myhelper_railsem19_b.read_label_seg_png_from_file(full_fnames_label_seg_png_for_regu2,
-        #                                                                             self.size_img_rsz)
-
 
 
         ###=============================================================================================
         ### 1.4 read list_triplet_json (from file)
         ###=============================================================================================
         list_triplet_json = json.load(open(full_fname_triplet_json, 'r'))
-            # completed to set
-            #       list_triplet_json
-            # *see the following file for detailed info about 'list_triplet_json':
-            #   </home/yu1/proj_avin/dataset/proj_rs19_jungwon_a/main_create_LRC_triplet_my.py>
+
 
         ###=============================================================================================
         ### 1.5 read list_ins_json (from file)
@@ -233,19 +244,17 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         list_ins_json = json.load(open(full_fnames_ins_json, 'r'))
         list_ins_json = np.array(list_ins_json)
 
-
-
-
-        ### <<debugging>>
-        if 0:
-            img_vis_label_my_triplet = copy.deepcopy(img_raw_rsz_uint8)
-            myhelper_railsem19_b.visualize_label_my_triplet(list_triplet_json,
-                                                            img_vis_label_my_triplet,
-                                                            self.FACTOR_ori_to_rsz_h,
-                                                            self.FACTOR_ori_to_rsz_w)
-        #end
-
-
+        ###=============================================================================================
+        ### 1.6 read triplet image (from file)
+        ###=============================================================================================
+        if self.n_channels == 1:
+            labelmap_centerline = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_image)
+        elif self.n_channels == 3:
+            labelmap_centerline = myhelper_railsem19_b.read_triplet_C_from_file(full_fname_triplet_C)
+            labelmap_leftrail   = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_L)
+            labelmap_rightrail  = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_R)
+            labelmap_leftright = np.concatenate((labelmap_leftrail, labelmap_rightrail), axis=0)
+            output_labelmap_leftright  = torch.from_numpy(labelmap_leftright).float()
 
         ###///////////////////////////////////////////////////////////////////////////////////////////////////
         ### 2. processing
@@ -269,68 +278,37 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###=============================================================================================
         ### 2.2 create hmap from list_triplet_json
         ###=============================================================================================
-        # output_size_hmap : "size_img_rsz" or "size_fmap"
-        labelmap_centerline = None
-        labelmap_leftrail = None
-        labelmap_rightrail = None
+        # labelmap_centerline = None
+        # labelmap_leftrail = None
+        # labelmap_rightrail = None
 
+        # if (self.output_size_hmap) is "size_fmap":
+        #     labelmap_centerline, \
+        #     labelmap_leftrail,\
+        #     labelmap_rightrail = myhelper_railsem19_b.create_labelmap_triplet(list_triplet_json,
+        #                                                                       self.size_fmap,
+        #                                                                       self.FACTOR_ori_to_fmap_h,
+        #                                                                       self.FACTOR_ori_to_fmap_w)
+        #
+        #     labelmap_centerline_priority = myhelper_railsem19_b.create_labelmap_triplet_priority(list_triplet_json,
+        #                                                                       self.size_fmap,
+        #                                                                       self.FACTOR_ori_to_fmap_h,
+        #                                                                       self.FACTOR_ori_to_fmap_w)
+        # elif (self.output_size_hmap) is "size_img_rsz":
+        #     labelmap_centerline, \
+        #     labelmap_leftrail, \
+        #     labelmap_rightrail = myhelper_railsem19_b.create_labelmap_triplet(list_triplet_json,
+        #                                                                       self.size_img_rsz,
+        #                                                                       self.FACTOR_ori_to_rsz_h,
+        #                                                                       self.FACTOR_ori_to_rsz_w)
+        #
+        #     labelmap_centerline_priority = myhelper_railsem19_b.create_labelmap_triplet_priority(list_triplet_json,
+        #                                                                       self.size_img_rsz,
+        #                                                                       self.FACTOR_ori_to_rsz_h,
+        #                                                                       self.FACTOR_ori_to_rsz_w)
 
-        if (self.output_size_hmap) is "size_fmap":
-            labelmap_centerline, \
-            labelmap_leftrail,\
-            labelmap_rightrail = myhelper_railsem19_b.create_labelmap_triplet(list_triplet_json,
-                                                                              self.size_fmap,
-                                                                              self.FACTOR_ori_to_fmap_h,
-                                                                              self.FACTOR_ori_to_fmap_w)
+        # labelmap_leftright = np.concatenate((labelmap_leftrail, labelmap_rightrail), axis=0)
 
-            labelmap_centerline_priority = myhelper_railsem19_b.create_labelmap_triplet_priority(list_triplet_json,
-                                                                              self.size_fmap,
-                                                                              self.FACTOR_ori_to_fmap_h,
-                                                                              self.FACTOR_ori_to_fmap_w)
-        elif (self.output_size_hmap) is "size_img_rsz":
-            labelmap_centerline, \
-            labelmap_leftrail, \
-            labelmap_rightrail = myhelper_railsem19_b.create_labelmap_triplet(list_triplet_json,
-                                                                              self.size_img_rsz,
-                                                                              self.FACTOR_ori_to_rsz_h,
-                                                                              self.FACTOR_ori_to_rsz_w)
-
-            labelmap_centerline_priority = myhelper_railsem19_b.create_labelmap_triplet_priority(list_triplet_json,
-                                                                              self.size_img_rsz,
-                                                                              self.FACTOR_ori_to_rsz_h,
-                                                                              self.FACTOR_ori_to_rsz_w)
-        #end
-            # completed to set
-            #       hmap_centerline: ndarray(num_class, h, w), here, num_class = 1
-
-
-        ###
-        labelmap_leftright = np.concatenate((labelmap_leftrail, labelmap_rightrail), axis=0)
-
-
-        ### <<debugging>>
-        if 0:
-            img_labelmap_center_rgb, \
-            img_labelmap_left_rgb, \
-            img_labelmap_right_rgb = myhelper_railsem19_b.visualize_labelmaps(labelmap_centerline[0],
-                                                                              labelmap_leftrail[0],
-                                                                              labelmap_rightrail[0],
-                                                                              img_raw_rsz_uint8)
-
-            ###
-            fname_common = "/home/yu1/Desktop/dir_temp/temp4a/"
-
-            fname_img_labelmap_center_rgb = fname_common + 'center_' + str(index) + '.jpg'
-            fname_img_labelmap_left_rgb   = fname_common + 'left_'   + str(index) + '.jpg'
-            fname_img_labelmap_right_rgb  = fname_common + 'right_'  + str(index) + '.jpg'
-            fname_img_raw_rsz_uint8       = fname_common + 'in_'     + str(index) + '.jpg'
-
-            ###
-            cv2.imwrite(fname_img_labelmap_center_rgb,  img_labelmap_center_rgb)
-            cv2.imwrite(fname_img_labelmap_left_rgb,    img_labelmap_left_rgb)
-            cv2.imwrite(fname_img_labelmap_right_rgb,   img_labelmap_right_rgb)
-            cv2.imwrite(fname_img_raw_rsz_uint8,        img_raw_rsz_uint8)
-        #end
 
 
 
@@ -342,21 +320,23 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         output_img_raw             = torch.from_numpy(img_raw_rsz_fl_n).float()
         output_img_label_seg       = torch.from_numpy(img_label_seg_rsz_uint8).long()
         output_ins_json            = torch.from_numpy(list_ins_json)
-        # output_img_label_seg_for_regu = torch.from_numpy(img_label_seg_rsz_uint8_for_regu).long()
-        # output_img_label_seg_for_regu2 = torch.from_numpy(img_label_seg_rsz_uint8_for_regu2).long()
         output_labelmap_centerline = torch.from_numpy(labelmap_centerline).float()
-        output_labelmap_centerline_priority = torch.from_numpy(labelmap_centerline_priority).float()
-        output_labelmap_leftright  = torch.from_numpy(labelmap_leftright).float()
+        # output_labelmap_centerline_priority = torch.from_numpy(labelmap_centerline_priority).float()
 
         ###
-        output_final = {'img_raw_fl_n'                   : output_img_raw,                              # (3, h_rsz, w_rsz)
-                        'gt_img_label_seg'               : output_img_label_seg,                        # (h_rsz, w_rsz)
-                        'gt_instances'                   : output_ins_json,                             # (h_rsz, w_rsz)
-                        # 'gt_img_label_seg_for_regu'      : output_img_label_seg_for_regu,             # (h_rsz, w_rsz)
-                        # 'gt_img_label_seg_for_regu2'     : output_img_label_seg_for_regu2,            # (h_rsz, w_rsz)
-                        'gt_labelmap_centerline'         : output_labelmap_centerline,                  # (1, h_rsz, w_rsz)
-                        'gt_labelmap_leftright'          : output_labelmap_leftright,                   # (2, h_rsz, w_rsz)
-                        'gt_labelmap_centerline_priority' : output_labelmap_centerline_priority}
+        if self.n_channels == 1:
+            output_final = {'img_raw_fl_n'                   : output_img_raw,                              # (3, h_rsz, w_rsz)
+                            'gt_img_label_seg'               : output_img_label_seg,                        # (h_rsz, w_rsz)
+                            'gt_instances'                   : output_ins_json,                             # (h_rsz, w_rsz)
+                            'gt_labelmap_centerline'         : output_labelmap_centerline}                 # (1, h_rsz, w_rsz)
+
+        elif self.n_channels == 3:
+            output_final = {'img_raw_fl_n'                   : output_img_raw,                              # (3, h_rsz, w_rsz)
+                            'gt_img_label_seg'               : output_img_label_seg,                        # (h_rsz, w_rsz)
+                            'gt_instances'                   : output_ins_json,                             # (h_rsz, w_rsz)
+                            'gt_labelmap_centerline'         : output_labelmap_centerline,                 # (1, h_rsz, w_rsz)
+                            'gt_labelmap_leftright'          : output_labelmap_leftright}
+
 
         return output_final
     #end

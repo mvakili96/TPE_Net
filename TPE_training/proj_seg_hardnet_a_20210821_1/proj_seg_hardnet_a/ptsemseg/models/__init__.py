@@ -10,13 +10,13 @@ from ptsemseg.models.rpnet_c import rpnet_c
 ########################################################################################################################
 ### get_model
 ########################################################################################################################
-def get_model(model_dict, n_classes, version=None):
+def get_model(model_dict, n_classes_segmentation, n_channels_regression, version=None):
     name        = model_dict["arch"]
     model       = _get_model_instance(name)
     param_dict  = copy.deepcopy(model_dict)
     param_dict.pop("arch")
 
-    model       = model(n_classes=n_classes, **param_dict)
+    model       = model(n_classes_seg=n_classes_segmentation, n_channels_reg=n_channels_regression, **param_dict)
 
     return model
 #end

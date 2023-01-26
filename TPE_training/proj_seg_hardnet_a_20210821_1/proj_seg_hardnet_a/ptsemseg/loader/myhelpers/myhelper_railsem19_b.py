@@ -11,7 +11,7 @@ import cv2
 import math
 import copy
 from scipy.signal import find_peaks
-
+import tifffile as tiff
 
 from ptsemseg.loader.myhelpers.lib.image import draw_umich_gaussian, gaussian_radius
 
@@ -228,7 +228,37 @@ def read_label_seg_png_from_file(full_fname_label_seg_png, size_img_rsz):
     return img_raw_rsz_uint8
 #end
 
+########################################################################################################################
+###
+########################################################################################################################
+def read_triplet_image_from_file(full_fname_triplet_image_png):
 
+    ###================================================================================================
+    ### read label_seg_png
+    ###================================================================================================
+    img_raw = cv2.imread(full_fname_triplet_image_png,cv2.IMREAD_GRAYSCALE)
+        # completed to set
+        #       img_raw: ndarray(H,W,C), 0 ~ 255
+    img_reshaped = np.array([img_raw])
+
+    return img_reshaped
+#end
+
+########################################################################################################################
+###
+########################################################################################################################
+def read_triplet_C_from_file(full_fname_triplet_C_tiff):
+
+    ###================================================================================================
+    ### read label_seg_png
+    ###================================================================================================
+    img_raw = tiff.imread(full_fname_triplet_C_tiff)
+        # completed to set
+        #       img_raw: ndarray(H,W,C), 0 ~ 255
+    img_reshaped = np.array([img_raw])
+
+    return img_reshaped
+#end
 
 ########################################################################################################################
 ###
@@ -743,7 +773,7 @@ def decode_segmap(labelmap, plot=False):
     ### setting
     ###------------------------------------------------------------------------------------------
 
-    n_classes = 3
+    n_classes = 19
 
     ###
     rgb_class00 = [128,  64, 128]   # 00: road
@@ -834,7 +864,7 @@ def decode_segmap_b(labelmap):
     ###------------------------------------------------------------------------------------------
     ### setting
     ###------------------------------------------------------------------------------------------
-    n_classes = 3
+    n_classes = 19
 
     ###
     rgb_class00 = [128,  64, 128]   # 00: road

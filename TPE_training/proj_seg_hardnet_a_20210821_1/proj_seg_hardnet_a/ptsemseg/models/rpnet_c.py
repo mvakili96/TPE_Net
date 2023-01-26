@@ -335,9 +335,12 @@ class rpnet_c(nn.Module):
     ############################################################################################################
     ### rpnet_c::__init__()
     ############################################################################################################
-    def __init__(self, n_classes=3):
+    def __init__(self, n_classes_seg = 19, n_channels_reg = 3):
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         super(rpnet_c, self).__init__()
+
+        self.n_classes_seg  = n_classes_seg
+        self.n_channels_reg = n_channels_reg
 
         ###================================================================================================
         ### parameters (for FC-HarDNet)
@@ -366,7 +369,7 @@ class rpnet_c(nn.Module):
         ### parameters (for rpnet)
         ###================================================================================================
         ch_output_fc_hardnet_a = 48         # output of HDB-3U
-        ch_output_fc_hardnet_b = n_classes         # output of Conv-Final
+        ch_output_fc_hardnet_b = self.n_classes_seg         # output of Conv-Final
 
 
         ###================================================================================================
@@ -558,7 +561,7 @@ class rpnet_c(nn.Module):
         ### final conv (for FC-HarDNet)
         ###================================================================================================
         self.finalConv = nn.Conv2d(in_channels=cur_channels_count,
-                                   out_channels=n_classes, kernel_size=1, stride=1,
+                                   out_channels=self.n_classes_seg, kernel_size=1, stride=1,
                                    padding=0, bias=True)
 
 
@@ -567,18 +570,9 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         self.relu_on_finalConv = nn.ReLU(inplace=True)
 
-
-        ###================================================================================================
-        ### rpnet_decoder_cnvs (for rpnet)
-        ###================================================================================================
-        #ch_in_rpnet_decoder_cnvs = ch_output_fc_hardnet_a + ch_output_fc_hardnet_b
-        #self.rpnet_decoder_cnvs = ConvLayer(in_channels=ch_in_rpnet_decoder_cnvs, out_channels=256, kernel=3)
-
-
         ###================================================================================================
         ### rpnet_decoder_hmap_center (for rpnet)
         ###================================================================================================
-        #self.rpnet_decoder_hmap = MyDecoder(out_channels=1)
         ch_in_rpnet_decoder_centerline = ch_output_fc_hardnet_a + ch_output_fc_hardnet_b
 
 
@@ -586,17 +580,10 @@ class rpnet_c(nn.Module):
                                                   out_channels=1, kernel_size=1, stride=1,
                                                   padding=0, bias=True)
 
-        # self.rpnet_decoder_centerline_one = nn.Conv2d(in_channels=8,
-        #                                           out_channels=1, kernel_size=1, stride=1,
-        #                                           padding=0, bias=True)
-
-        # self.rpnet_decoder_leftright  = nn.Conv2d(in_channels=ch_in_rpnet_decoder_centerline,
-        #                                           out_channels=2, kernel_size=1, stride=1,
-        #                                           padding=0, bias=True)
-
-        # self.rpnet_decoder_leftright_one = nn.Conv2d(in_channels=8,
-        #                                           out_channels=2, kernel_size=1, stride=1,
-        #                                           padding=0, bias=True)
+        if self.n_channels_reg == 3:
+            self.rpnet_decoder_leftright  = nn.Conv2d(in_channels=ch_in_rpnet_decoder_centerline,
+                                                      out_channels=2, kernel_size=1, stride=1,
+                                                      padding=0, bias=True)
 
 
         #------------------------------------------------------------------------------
@@ -693,13 +680,8 @@ class rpnet_c(nn.Module):
         ### [rpnet] rpnet_decoder_hmap_center
         ###================================================================================================
         out_centerline = self.rpnet_decoder_centerline(backbone_rpnet)
-        # out_leftright  = self.rpnet_decoder_leftright(backbone_rpnet)
-
-        # out_centerline_zero = self.rpnet_decoder_centerline(backbone_rpnet)
-        # out_centerline = self.rpnet_decoder_centerline_one(out_centerline_zero)
-        #
-        # out_leftright_zero = self.rpnet_decoder_leftright(backbone_rpnet)
-        # out_leftright = self.rpnet_decoder_leftright_one(out_leftright_zero)
+        if self.n_channels_reg == 3:
+            out_leftright  = self.rpnet_decoder_leftright(backbone_rpnet)
 
 
         ###================================================================================================
@@ -714,27 +696,13 @@ class rpnet_c(nn.Module):
         ### [rpnet] interpolate for final result
         ###================================================================================================
         out_centerline_final = F.interpolate(out_centerline, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
+        if self.n_channels_reg == 3:
+            out_leftright_final  = F.interpolate(out_leftright, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
 
-        # out_leftright_final  = F.interpolate(out_leftright, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
-
-            # completed to set
-            #       out_labelmap_left_right_final
-
-
-        # h = out_centerline_final.shape[2]
-        # w = out_centerline_final.shape[3]
-        # out_centerline_for_regu = out_centerline_final.clone()
-        # out_centerline_for_regu = out_centerline_for_regu * 0.
-        # for img_index in range(out_centerline_final.shape[0]):
-        #     peaks,indices = F.max_pool1d(out_centerline_final[img_index], kernel_size = 10 , stride=10, padding=0, dilation=1, ceil_mode=False, return_indices=True)
-        #     for row_counter in range(200,indices.shape[1]):
-        #         for col_counter in range(indices.shape[2]):
-        #             if indices[0,row_counter,col_counter] % 10 != 0 and indices[0,row_counter,col_counter] % 10 != 9 and peaks[0,row_counter,col_counter] > 10:
-        #                 rail_width = peaks[0,row_counter,col_counter]
-        #                 out_centerline_for_regu[img_index, 0, row_counter, min(w-1,indices[0, row_counter, col_counter]+rail_width.long()) ] = 1.
-        #                 out_centerline_for_regu[img_index, 0, row_counter, max(0,indices[0, row_counter, col_counter]-rail_width.long()) ] = 1.
-
-        return out_seg_final, out_centerline_final
+        if self.n_channels_reg == 3:
+            return out_seg_final, out_centerline_final, out_leftright_final
+        elif self.n_channels_reg == 1:
+            return out_seg_final, out_centerline_final
     #end
 
 
@@ -751,7 +719,7 @@ if __name__ == '__main__':
 
 
     ###
-    net = rpnet_c(n_classes=3).cuda()
+    net = rpnet_c(n_classes=19).cuda()
 
 
     ###

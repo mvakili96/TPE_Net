@@ -56,16 +56,23 @@ def train(cfg, writer, logger, fname_weight_init):
 
 
     ###============================================================================================================
-    ### (1) create dataloader
+    ### create dataloader
     ###============================================================================================================
     data_loader   = get_loader(cfg["data"]["dataset"])
 
 
     ###---------------------------------------------------------------------------------------------------
+    ### set n_classes_seg
+    ###---------------------------------------------------------------------------------------------------
+    # n_classes_seg = t_loader_head.n_classes
+    n_classes_segmentation = cfg["training"]["num_seg_classes"]
+    n_channels_regression  = cfg["training"]["num_reg_channels"]
+
+    ###---------------------------------------------------------------------------------------------------
     ### create dataloader_head
     ###---------------------------------------------------------------------------------------------------
-    t_loader_head = data_loader(type_trainval="train", output_size_hmap="size_img_rsz")
-    v_loader_head = data_loader(type_trainval="val",   output_size_hmap="size_img_rsz")
+    t_loader_head = data_loader(type_trainval="train", output_size_hmap="size_img_rsz", n_classes_seg = n_classes_segmentation, n_channels_reg = n_channels_regression)
+    v_loader_head = data_loader(type_trainval="val",   output_size_hmap="size_img_rsz", n_classes_seg = n_classes_segmentation, n_channels_reg = n_channels_regression)
         # completed to create
         #       t_loader_head
         #       v_loader_head
@@ -96,10 +103,7 @@ def train(cfg, writer, logger, fname_weight_init):
         #       v_loader_batch
 
 
-    ###---------------------------------------------------------------------------------------------------
-    ### set n_classes_seg
-    ###---------------------------------------------------------------------------------------------------
-    n_classes_seg = t_loader_head.n_classes
+
 
     ###============================================================================================================
     ### (2) setup model
@@ -108,7 +112,7 @@ def train(cfg, writer, logger, fname_weight_init):
     ###---------------------------------------------------------------------------------------------------
     ### setup model
     ###---------------------------------------------------------------------------------------------------
-    model = get_model(cfg["model"], n_classes_seg).to(device)
+    model = get_model(cfg["model"], n_classes_segmentation, n_channels_regression).to(device)
 
     # total_params = sum(p.numel() for p in model.parameters())
     # print( 'Parameters:',total_params )
@@ -124,36 +128,6 @@ def train(cfg, writer, logger, fname_weight_init):
     ### load initial (pre-trained) weights into model
     ###---------------------------------------------------------------------------------------------------
     my_utils.load_weights_to_model(model, fname_weight_init)
-
-
-    ###---------------------------------------------------------------------------------------------------
-    ### freeze model of only FC-HarDNet part
-    ###---------------------------------------------------------------------------------------------------
-    if 0:
-        ###
-        for param_this in model.base.parameters():
-            param_this.requires_grad = False
-        #end
-
-        ###
-        for param_this in model.conv1x1_up.parameters():
-            param_this.requires_grad = False
-        #end
-
-        ###
-        for param_this in model.denseBlocksUp.parameters():
-            param_this.requires_grad = False
-        #end
-
-        ###
-        model.finalConv.bias.requires_grad = False
-        model.finalConv.weight.requires_grad = False
-
-        ###
-        for param_this in model.transUpBlocks.parameters():
-            param_this.requires_grad = False
-        #end
-    #end
 
 
 
@@ -175,7 +149,6 @@ def train(cfg, writer, logger, fname_weight_init):
     scheduler = get_scheduler(optimizer, cfg["training"]["lr_schedule"])
 
 
-
     ###============================================================================================================
     ### (5) setup loss
     ###============================================================================================================
@@ -191,7 +164,7 @@ def train(cfg, writer, logger, fname_weight_init):
     ###============================================================================================================
 
     ### setup metrics
-    running_metrics_val = runningScore(n_classes_seg)
+    running_metrics_val = runningScore(n_classes_segmentation)
 
     ### init
     start_iter = 0
@@ -223,38 +196,6 @@ def train(cfg, writer, logger, fname_weight_init):
     num_loss_regu = 0
 
 
-    # for data_batch_validation in v_loader_batch:
-    #     imgs_raw_fl_n = data_batch_validation['img_raw_fl_n']  # (bs, 3, h_rsz, w_rsz)
-    #     gt_imgs_label_seg = data_batch_validation['gt_img_label_seg']  # (bs, h_rsz, w_rsz)
-    #     gt_labelmap_centerline = data_batch_validation['gt_labelmap_centerline']  # (bs, 1, h_rsz, w_rsz)
-    #
-    #     imgs_raw_fl_n = imgs_raw_fl_n.to(device)
-    #     gt_imgs_label_seg = gt_imgs_label_seg.to(device)
-    #     gt_labelmap_centerline = gt_labelmap_centerline.to(device)
-    #
-    #     outputs_seg, \
-    #     outputs_centerline = model(imgs_raw_fl_n)
-    #
-    #     loss_seg = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val=1)
-    #     loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline,
-    #                                       b_sigmoid=False)
-    #
-    #     loss_accum_seg_validation += loss_seg.item()
-    #     loss_accum_centerline_validation += loss_centerline.item()
-    #
-    #     num_loss_validation += 1
-    #
-    # fmt_str = "(VALIDATION) Iter [{:d}/{:d}], Loss (seg): {:.7f}, Loss (centerline): {:.7f}"
-    #
-    # print_str = fmt_str.format(
-    #     0,
-    #     cfg["training"]["train_iters"],
-    #     loss_accum_seg_validation / num_loss_validation,
-    #     loss_accum_centerline_validation / num_loss_validation,
-    # )
-    #
-    # print(print_str)
-
     ###============================================================================================================
     ### (7) loop for training
     ###============================================================================================================
@@ -269,21 +210,16 @@ def train(cfg, writer, logger, fname_weight_init):
             imgs_raw_fl_n                        = data_batch['img_raw_fl_n']                     # (bs, 3, h_rsz, w_rsz)
             gt_imgs_label_seg                    = data_batch['gt_img_label_seg']                 # (bs, h_rsz, w_rsz)
             gt_ins_pose                          = data_batch['gt_instances']
-            # gt_imgs_label_seg_for_regu           = data_batch['gt_img_label_seg_for_regu']        # (bs, h_rsz, w_rsz)
-            # gt_imgs_label_seg_for_regu2          = data_batch['gt_img_label_seg_for_regu2']       # (bs, h_rsz, w_rsz)
             gt_labelmap_centerline               = data_batch['gt_labelmap_centerline']           # (bs, 1, h_rsz, w_rsz)
-            gt_labelmap_leftright                = data_batch['gt_labelmap_leftright']            # (bs, 2, h_rsz, w_rsz)
-            gt_labelmap_centerline_priority      = data_batch['gt_labelmap_centerline_priority']           # (bs, 1, h_rsz, w_rsz)
+            if n_channels_regression == 3:
+                gt_labelmap_leftright                = data_batch['gt_labelmap_leftright']            # (bs, 2, h_rsz, w_rsz)
+                gt_labelmap_leftright = gt_labelmap_leftright.to(device)
 
 
             imgs_raw_fl_n           = imgs_raw_fl_n.to(device)
             gt_imgs_label_seg       = gt_imgs_label_seg.to(device)
             gt_ins_pose             = gt_ins_pose.to(device)
-            # gt_imgs_label_seg_for_regu = gt_imgs_label_seg_for_regu.to(device)
-            # gt_imgs_label_seg_for_regu2 = gt_imgs_label_seg_for_regu2.to(device)
             gt_labelmap_centerline  = gt_labelmap_centerline.to(device)
-            gt_labelmap_centerline_priority = gt_labelmap_centerline_priority.to(device)
-            gt_labelmap_leftright   = gt_labelmap_leftright.to(device)
 
             ###
             scheduler.step()
@@ -291,128 +227,23 @@ def train(cfg, writer, logger, fname_weight_init):
             optimizer.zero_grad()
 
             ###
-            outputs_seg, outputs_centerline = model(imgs_raw_fl_n)
-
-            outputs_seg_labeled = torch.squeeze(outputs_seg.max(1)[1], axis=0)
-
-            ############################################################################
-            ### REGULARIZATION TERMs
-            ############################################################################
-            num_offset_pixels = 10
-            flag_regu = 0
-            flg_using_log = 1
-            version_regu = 3
-
-            if flag_regu and version_regu == 1:
-                estimated_seg_0 = torch.zeros((outputs_centerline.shape[0], 1, outputs_centerline.shape[2], outputs_centerline.shape[3]), requires_grad=False)
-                estimated_seg_1 = torch.ones(( outputs_centerline.shape[0], 1, outputs_centerline.shape[2], outputs_centerline.shape[3]), requires_grad=False)
-                estimated_seg   = torch.cat((estimated_seg_0,estimated_seg_1), dim = 1)
-
-                for image_index in range(outputs_centerline.shape[0]):
-                    vertical_dim = outputs_centerline.shape[2]
-
-                    for height in range(vertical_dim):
-                        row_centerness = outputs_centerline[image_index, 0, height]
-                        x_peaks = find_peaks(row_centerness.cpu(), 10, 10)
-
-                        for x_this in x_peaks:
-                            distance = row_centerness[x_this]
-                            # distance = round(distance)
-                            for offset in range(num_offset_pixels):
-                                probability = torch.tensor((num_offset_pixels - offset) * (0.99 / num_offset_pixels), requires_grad=True)
-                                if flg_using_log == 1:
-                                    probability_0 = 10 * math.log(probability)
-                                    probability_1 = 10 * math.log(1 - probability)
-                                else:
-                                    probability_0 = probability
-                                    probability_1 = 1 - probability
-
-                                if x_this[0] - distance - offset >= 0:
-                                    last_indice = x_this[0] - distance - offset
-                                    estimated_seg[image_index, 0, height, last_indice.long()] = probability_0
-                                    estimated_seg[image_index, 1, height, last_indice.long()] = probability_1
-                                if x_this[0] - distance + offset >= 0:
-                                    last_indice = x_this[0] - distance + offset
-                                    estimated_seg[image_index, 0, height, last_indice.long()] = probability_0
-                                    estimated_seg[image_index, 1, height, last_indice.long()] = probability_1
-
-                                if x_this[0] + distance - offset < outputs_centerline.shape[3]:
-                                    last_indice = x_this[0] + distance - offset
-                                    estimated_seg[image_index, 0, height, last_indice.long()] = probability_0
-                                    estimated_seg[image_index, 1, height, last_indice.long()] = probability_1
-
-                                if x_this[0] + distance + offset < outputs_centerline.shape[3]:
-                                    last_indice = x_this[0] + distance + offset
-                                    estimated_seg[image_index, 0, height, last_indice.long()] = probability_0
-                                    estimated_seg[image_index, 1, height, last_indice.long()] = probability_1
-
-                # estimated_seg = torch.from_numpy(estimated_seg)
-                # estimated_seg.requires_grad = True
-                estimated_seg_for_regu = estimated_seg.to(device)
-
-
-            elif flag_regu and version_regu == 2:
-                estimated_cen = np.zeros(( outputs_centerline.shape[0], outputs_centerline.shape[2], outputs_centerline.shape[3]))
-                for image_index in range(outputs_centerline.shape[0]):
-                    vertical_dim = outputs_centerline.shape[2]
-                    for height in range(vertical_dim):
-                        print(height)
-                        dist_min = (235.0/270.0) * height + (220.0)
-                        dist_min = max(15, dist_min)
-                        dist_min = dist_min * 0.1
-
-                        row_centerness = outputs_centerline[image_index, 0, height]
-                        x_peaks, _ = find_peaks(row_centerness.cpu().data.numpy(), height=10, distance=10)
-
-                        for x_this in x_peaks:
-                            distance = row_centerness[x_this]
-                            distance = int(distance)
-                            for offset in range(num_offset_pixels):
-                                probability = 1
-                                if x_this - distance - offset >= 0:
-                                    estimated_cen[image_index, height, x_this - distance - offset] = probability
-                                if x_this - distance + offset >= 0:
-                                    estimated_cen[image_index, height, x_this - distance + offset] = probability
-
-                                if x_this + distance - offset < outputs_centerline.shape[3]:
-                                    estimated_cen[image_index, height, x_this + distance - offset] = probability
-                                if x_this + distance + offset < outputs_centerline.shape[3]:
-                                    estimated_cen[image_index, height, x_this + distance + offset] = probability
-
-                estimated_cen = torch.from_numpy(estimated_cen)
-                estimated_cen.requires_grad = True
-                estimated_cen_for_regu = estimated_cen.to(device)
-
+            if n_channels_regression == 1:
+                outputs_seg, outputs_centerline = model(imgs_raw_fl_n)
+            elif n_channels_regression == 3:
+                outputs_seg, outputs_centerline, outputs_leftright = model(imgs_raw_fl_n)
 
 
             #############################################################################
-            #### END OF REGULARIZATION
+            #### CALCULATE LOSSES
             #############################################################################
             loss_seg        = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0)
-            # loss_seg = my_loss.L1_loss(x_est=outputs_seg_labeled.float(), x_gt=gt_imgs_label_seg.float(), b_sigmoid=False)
-            loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, b_sigmoid=True)
-            # loss_leftright  = my_loss.L1_loss(x_est=outputs_leftright,  x_gt=gt_labelmap_leftright)
-            if flag_regu and version_regu == 1:
-                loss_regu       = loss_fn(input=estimated_seg_for_regu, target=gt_imgs_label_seg_for_regu, train_val = 0)
-                loss_this = loss_regu
-                loss_accum_regu += loss_regu.item()
-            elif flag_regu and version_regu == 2:
-                loss_regu = my_loss.L1_loss(x_est=estimated_cen_for_regu, x_gt=gt_imgs_label_seg_for_regu2/float(255), b_sigmoid=False)
-                loss_this = 0 * loss_seg + 100*loss_regu + 0 * loss_centerline
-                loss_accum_regu += loss_regu.item()
-            elif flag_regu and version_regu == 3:
-                loss_regu = my_loss.L1_loss(x_est=out_centerline_for_regu, x_gt=gt_imgs_label_seg_for_regu2/float(255), b_sigmoid=False)
-                loss_this = 100*loss_regu
-                loss_accum_regu += loss_regu.item()
-            else:
+            loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
+            if n_channels_regression == 1:
                 loss_this = 1 * loss_seg + 0.4 * loss_centerline
-                # loss_this = loss_seg + 20.0 * loss_centerline + 0.2 * loss_leftright
+            elif n_channels_regression == 3:
+                loss_leftright  = my_loss.L1_loss(x_est=outputs_leftright,  x_gt=gt_labelmap_leftright, n_chann = n_channels_regression)
+                loss_this = loss_seg + 20.0 * loss_centerline + 0.2 * loss_leftright
 
-
-
-            #loss_centerline = my_loss.MSE_loss(x_est=outputs_labelmap_center
-            # ]=line, x_gt=gt_labelmap_centerline)
-            #loss_hmap = my_loss.neg_loss_cb(preds=outputs_hmap_centerline, targets=gt_hmap_centerline)
 
             ###
             loss_this.backward()
@@ -428,7 +259,8 @@ def train(cfg, writer, logger, fname_weight_init):
             loss_accum_all        += loss_this.item()
             loss_accum_seg        += loss_seg.item()
             loss_accum_centerline += loss_centerline.item()
-            # loss_accum_leftright  += loss_leftright
+            if n_channels_regression == 3:
+                loss_accum_leftright  += loss_leftright.item()
 
 
             num_loss += 1
@@ -467,31 +299,35 @@ def train(cfg, writer, logger, fname_weight_init):
                 loss_accum_centerline_validation = 0
                 loss_accum_leftright_validation = 0
                 num_loss_validation = 0
-                if (i + 1) % 1000 == 0:
+                if (i + 1) % 30000 == 0:
                     for data_batch_validation in v_loader_batch:
                         imgs_raw_fl_n = data_batch_validation['img_raw_fl_n']                            # (bs, 3, h_rsz, w_rsz)
                         gt_imgs_label_seg = data_batch_validation['gt_img_label_seg']                    # (bs, h_rsz, w_rsz)
                         gt_labelmap_centerline = data_batch_validation['gt_labelmap_centerline']         # (bs, 1, h_rsz, w_rsz)
-                        gt_labelmap_leftright  = data_batch['gt_labelmap_leftright']
+                        if n_channels_regression == 3:
+                            gt_labelmap_leftright  = data_batch_validation['gt_labelmap_leftright']
+                            gt_labelmap_leftright  = gt_labelmap_leftright.to(device)
 
                         imgs_raw_fl_n = imgs_raw_fl_n.to(device)
                         gt_imgs_label_seg = gt_imgs_label_seg.to(device)
                         gt_labelmap_centerline = gt_labelmap_centerline.to(device)
-                        gt_labelmap_leftright  = gt_labelmap_leftright.to(device)
 
-                        outputs_seg, \
-                        outputs_centerline =  model(imgs_raw_fl_n)
 
-                        loss_seg = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 1)
-                        loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline,
-                                                          b_sigmoid=True)
-                        # loss_leftright = my_loss.L1_loss(x_est=outputs_leftright, x_gt=gt_labelmap_leftright,
-                        #                                   b_sigmoid=False)
+                        if n_channels_regression == 1:
+                            outputs_seg, outputs_centerline =  model(imgs_raw_fl_n)
+                        elif n_channels_regression == 3:
+                            outputs_seg, outputs_centerline, outputs_leftright = model(imgs_raw_fl_n)
+
+
+
+                        loss_seg = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0)
+                        loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
+                        if n_channels_regression == 3:
+                            loss_leftright = my_loss.L1_loss(x_est=outputs_leftright, x_gt=gt_labelmap_leftright, n_chann = n_channels_regression)
+                            loss_accum_leftright_validation  += loss_leftright.item()
 
                         loss_accum_seg_validation += loss_seg.item()
                         loss_accum_centerline_validation += loss_centerline.item()
-                        # loss_accum_leftright_validation  += loss_leftright.item()
-
 
                         num_loss_validation += 1
 
