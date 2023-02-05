@@ -385,7 +385,7 @@ class rpnet_c(nn.Module):
         ###================================================================================================
         ### set init-conv (for FC-HarDNet)
         ###================================================================================================
-        self.base.append( ConvLayer(in_channels=3, out_channels=first_ch[0], kernel=3, stride=2, dilation_this=1) )  # conv0
+        self.base.append( ConvLayer(in_channels=5, out_channels=first_ch[0], kernel=3, stride=2, dilation_this=1) )  # conv0
         self.base.append( ConvLayer(first_ch[0], first_ch[1],  kernel=3, dilation_this=1) )                          # conv1
         self.base.append( ConvLayer(first_ch[1], first_ch[2],  kernel=3, stride=2, dilation_this=1) )                # conv2
         self.base.append( ConvLayer(first_ch[2], first_ch[3],  kernel=3, dilation_this=1) )                          # conv3

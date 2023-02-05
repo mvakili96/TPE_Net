@@ -136,7 +136,7 @@ def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
     variance_loss = torch.mean(var_loss[var_loss >= 0])
 
 
-    total_loss_this_batch = dis_loss + 0.001*reg_loss + variance_loss
+    total_loss_this_batch = dis_loss + 0.01*reg_loss + variance_loss
 
 
     return total_loss_this_batch,dis_loss,reg_loss,variance_loss

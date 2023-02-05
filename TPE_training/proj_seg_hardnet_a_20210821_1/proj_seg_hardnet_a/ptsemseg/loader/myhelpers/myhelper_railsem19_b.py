@@ -137,10 +137,29 @@ def convert_img_ori_to_img_data(img_ori_uint8,
     ###================================================================================================
     img_data_fl_n_final = img_ori_fl_n.astype(np.float32)
 
+    img_data_fl_n_final_coord = concat_xy_coordinates_to_image(img_data_fl_n_final)
 
-    return img_data_fl_n_final
+    return img_data_fl_n_final_coord
         # ndarray(C,H,W), -X.0 ~ X.0
 #end
+
+
+########################################################################################################################
+###
+########################################################################################################################
+def concat_xy_coordinates_to_image(img):
+    h = img.shape[1]
+    w = img.shape[2]
+
+    y_coord_layer  = (2/w) * np.array([[[y for y in range(1, w + 1)] for x in range(h)]]) - 1
+    x_coord_layer  = (2/h) * np.array([[[x for y in range(1, w + 1)] for x in range(h)]]) - 1
+
+    xy_coord_layer = np.concatenate((y_coord_layer,x_coord_layer), axis=0)
+
+    img_final      = np.concatenate((img,xy_coord_layer), axis=0)
+
+    return img_final
+
 
 
 ########################################################################################################################
