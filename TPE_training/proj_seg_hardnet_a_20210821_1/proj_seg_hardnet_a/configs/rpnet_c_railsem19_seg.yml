@@ -1,5 +1,9 @@
 model:
-    arch: rpnet_c
+    arch: erfnet
+weight_init:
+    rpnet_c: '../runs/hardnet/cur/MybestSoFar.pkl'
+    dlinknet_34: -1
+    erfnet: '../runs/hardnet/cur/erfnet.pth'
 data:
     dataset: railsem19_seg_triplet_b
     train_split: train
@@ -9,20 +13,24 @@ data:
     path: None
     sbd_path: None
 training:
-    num_seg_classes: 19
-    num_reg_channels: 3
+    num_seg_classes: 3
+    num_reg_channels: 1
     train_iters: 90000
     batch_size: 8
     val_interval: 100
     n_workers: 0
     print_interval: 100
     optimizer:
-        name: 'sgd'
-        lr: 0.001
-        weight_decay: 0.0005
-        momentum: 0.9
+        name: 'adam'
+        adam:
+            lr: 0.001
+            weight_decay: 0.0005
+        sgd:
+            lr: 0.001
+            weight_decay: 0.0005
+            momentum: 0.9
     loss:
-        name: 'bootstrapped_cross_entropy'
+        name: 'ce_weighted'
         min_K: 8192
         loss_th: 0.3
         size_average: True

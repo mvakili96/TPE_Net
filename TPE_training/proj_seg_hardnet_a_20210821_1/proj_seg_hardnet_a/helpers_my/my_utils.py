@@ -19,6 +19,14 @@ def weights_init(m):
 #end
 
 
+def load_my_state_dict(model, state_dict):  #custom function to load model when not all dict keys are there
+    own_state = model.state_dict()
+    for name, param in state_dict.items():
+        if name not in own_state:
+             continue
+        own_state[name].copy_(param)
+    return model
+
 ########################################################################################################################
 ### load model from weights-to-be-loaded
 ########################################################################################################################
@@ -57,7 +65,6 @@ def load_weights_to_model(model, fname_weights_to_be_loaded):
     #end
         # completed to set
         #       state_dict_weights{}
-
 
     ###================================================================================================
     ### 3. selective copy (2): copy state_dict_model[] -> state_dict_weights[]

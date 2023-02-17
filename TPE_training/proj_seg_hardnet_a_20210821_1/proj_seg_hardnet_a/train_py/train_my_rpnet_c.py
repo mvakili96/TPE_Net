@@ -10,6 +10,7 @@ import torch
 import random
 import argparse
 import numpy as np
+import torchvision
 import torch.nn as nn
 from scipy.signal import find_peaks
 
@@ -39,7 +40,7 @@ from tensorboardX               import SummaryWriter
 ########################################################################################################################
 ### train()
 ########################################################################################################################
-def train(cfg, writer, logger, fname_weight_init):
+def train(cfg, writer, logger):
     ###============================================================================================================
     ### (0) init
     ###============================================================================================================
@@ -52,7 +53,6 @@ def train(cfg, writer, logger, fname_weight_init):
 
     ### setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # device: cuda (if gpu is available)
 
 
     ###============================================================================================================
@@ -64,18 +64,24 @@ def train(cfg, writer, logger, fname_weight_init):
     ###---------------------------------------------------------------------------------------------------
     ### set n_classes_seg
     ###---------------------------------------------------------------------------------------------------
-    # n_classes_seg = t_loader_head.n_classes
     n_classes_segmentation = cfg["training"]["num_seg_classes"]
     n_channels_regression  = cfg["training"]["num_reg_channels"]
 
     ###---------------------------------------------------------------------------------------------------
+    ### set different input image sizes for different networks
+    ###---------------------------------------------------------------------------------------------------
+    network_image_sizes = {
+        "rpnet_c": {'h': 540,  'w': 960},
+        "dlinknet_34": {'h': 512,  'w': 1024},
+        "erfnet": {'h': 720, 'w': 1280}
+    }
+
+
+    ###---------------------------------------------------------------------------------------------------
     ### create dataloader_head
     ###---------------------------------------------------------------------------------------------------
-    t_loader_head = data_loader(type_trainval="train", output_size_hmap="size_img_rsz", n_classes_seg = n_classes_segmentation, n_channels_reg = n_channels_regression)
-    v_loader_head = data_loader(type_trainval="val",   output_size_hmap="size_img_rsz", n_classes_seg = n_classes_segmentation, n_channels_reg = n_channels_regression)
-        # completed to create
-        #       t_loader_head
-        #       v_loader_head
+    t_loader_head = data_loader(type_trainval="train", output_size_hmap="size_img_rsz", n_classes_seg = n_classes_segmentation, n_channels_reg = n_channels_regression, network_input_size = network_image_sizes[cfg["model"]["arch"]])
+    v_loader_head = data_loader(type_trainval="val",   output_size_hmap="size_img_rsz", n_classes_seg = n_classes_segmentation, n_channels_reg = n_channels_regression, network_input_size = network_image_sizes[cfg["model"]["arch"]])
 
 
     ###---------------------------------------------------------------------------------------------------
@@ -87,9 +93,6 @@ def train(cfg, writer, logger, fname_weight_init):
         num_workers=cfg["training"]["n_workers"],
         shuffle=False,
         )
-        # completed to create
-        #       t_loader_batch
-
 
     ###---------------------------------------------------------------------------------------------------
     ### create v_loader_batch
@@ -99,35 +102,39 @@ def train(cfg, writer, logger, fname_weight_init):
         batch_size=cfg["training"]["batch_size"],
         num_workers=cfg["training"]["n_workers"]
         )
-        # completed to create
-        #       v_loader_batch
-
-
 
 
     ###============================================================================================================
     ### (2) setup model
     ###============================================================================================================
-
-    ###---------------------------------------------------------------------------------------------------
-    ### setup model
-    ###---------------------------------------------------------------------------------------------------
     model = get_model(cfg["model"], n_classes_segmentation, n_channels_regression).to(device)
-
-    # total_params = sum(p.numel() for p in model.parameters())
-    # print( 'Parameters:',total_params )
-
 
     ###---------------------------------------------------------------------------------------------------
     ### init weights
     ###---------------------------------------------------------------------------------------------------
-    model.apply(my_utils.weights_init)
-
+    if cfg["model"]["arch"] == "rpnet_c":
+        model.apply(my_utils.weights_init)
 
     ###---------------------------------------------------------------------------------------------------
     ### load initial (pre-trained) weights into model
     ###---------------------------------------------------------------------------------------------------
-    my_utils.load_weights_to_model(model, fname_weight_init)
+    fname_weight_init = cfg["weight_init"][cfg["model"]["arch"]]
+    if cfg["model"]["arch"] != "dlinknet_34":
+        if cfg["model"]["arch"] == "rpnet_c":
+            my_utils.load_weights_to_model(model, fname_weight_init)
+        elif cfg["model"]["arch"] == "erfnet":
+            my_utils.load_my_state_dict(model, torch.load(fname_weight_init))
+
+
+    ###---------------------------------------------------------------------------------------------------
+    ### Freezing
+    ###---------------------------------------------------------------------------------------------------
+    if 1:
+        ###
+        for param_this in model.decoder.finalconvCent.parameters():
+            param_this.requires_grad = False
+        #end
+    #end
 
 
 
@@ -135,10 +142,9 @@ def train(cfg, writer, logger, fname_weight_init):
     ### (3) setup optimizer
     ###============================================================================================================
     optimizer_cls = get_optimizer(cfg)
-    optimizer_params = {k: v for k, v in cfg["training"]["optimizer"].items() if k != "name"}
+    optimizer_params = {k: v for k, v in cfg["training"]["optimizer"][cfg["training"]["optimizer"]["name"]].items()}
 
     optimizer = optimizer_cls(model.parameters(), **optimizer_params)
-    #print("Using optimizer {}".format(optimizer))
     logger.info("Using optimizer {}".format(optimizer))
 
 
@@ -186,16 +192,13 @@ def train(cfg, writer, logger, fname_weight_init):
     loss_accum_leftright   = 0
     loss_accum_regu        = 0
 
-    loss_accum_seg_validation = 0
-    loss_accum_centerline_validation = 0
-    loss_accum_leftright_validation  = 0
-
-    num_loss_validation = 0
 
     num_loss = 0
     num_loss_regu = 0
 
-
+    # jojo = torchvision.models.resnet34(pretrained=True)
+    # a = jojo.state_dict()
+    # print(a)
     ###============================================================================================================
     ### (7) loop for training
     ###============================================================================================================
@@ -236,10 +239,10 @@ def train(cfg, writer, logger, fname_weight_init):
             #############################################################################
             #### CALCULATE LOSSES
             #############################################################################
-            loss_seg        = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0)
+            loss_seg        = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0, dev = device)
             loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
             if n_channels_regression == 1:
-                loss_this = 1 * loss_seg + 0.4 * loss_centerline
+                loss_this = loss_seg #+ 0.4 * loss_centerline
             elif n_channels_regression == 3:
                 loss_leftright  = my_loss.L1_loss(x_est=outputs_leftright,  x_gt=gt_labelmap_leftright, n_chann = n_channels_regression)
                 loss_this = loss_seg + 20.0 * loss_centerline + 0.2 * loss_leftright
@@ -299,17 +302,17 @@ def train(cfg, writer, logger, fname_weight_init):
                 loss_accum_centerline_validation = 0
                 loss_accum_leftright_validation = 0
                 num_loss_validation = 0
-                if (i + 1) % 30000 == 0:
+                if (i + 1) % 3000 == 0:
                     for data_batch_validation in v_loader_batch:
-                        imgs_raw_fl_n = data_batch_validation['img_raw_fl_n']                            # (bs, 3, h_rsz, w_rsz)
-                        gt_imgs_label_seg = data_batch_validation['gt_img_label_seg']                    # (bs, h_rsz, w_rsz)
+                        imgs_raw_fl_n          = data_batch_validation['img_raw_fl_n']                            # (bs, 3, h_rsz, w_rsz)
+                        gt_imgs_label_seg      = data_batch_validation['gt_img_label_seg']                    # (bs, h_rsz, w_rsz)
                         gt_labelmap_centerline = data_batch_validation['gt_labelmap_centerline']         # (bs, 1, h_rsz, w_rsz)
                         if n_channels_regression == 3:
                             gt_labelmap_leftright  = data_batch_validation['gt_labelmap_leftright']
                             gt_labelmap_leftright  = gt_labelmap_leftright.to(device)
 
-                        imgs_raw_fl_n = imgs_raw_fl_n.to(device)
-                        gt_imgs_label_seg = gt_imgs_label_seg.to(device)
+                        imgs_raw_fl_n          = imgs_raw_fl_n.to(device)
+                        gt_imgs_label_seg      = gt_imgs_label_seg.to(device)
                         gt_labelmap_centerline = gt_labelmap_centerline.to(device)
 
 
@@ -320,13 +323,13 @@ def train(cfg, writer, logger, fname_weight_init):
 
 
 
-                        loss_seg = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0)
+                        loss_seg = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0, dev = device)
                         loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
                         if n_channels_regression == 3:
                             loss_leftright = my_loss.L1_loss(x_est=outputs_leftright, x_gt=gt_labelmap_leftright, n_chann = n_channels_regression)
                             loss_accum_leftright_validation  += loss_leftright.item()
 
-                        loss_accum_seg_validation += loss_seg.item()
+                        loss_accum_seg_validation        += loss_seg.item()
                         loss_accum_centerline_validation += loss_centerline.item()
 
                         num_loss_validation += 1
@@ -387,7 +390,6 @@ if __name__ == "__main__":
     ###============================================================================================================
 
     fname_config = '../configs/rpnet_c_railsem19_seg.yml'
-    fname_weight_init = '../runs/hardnet/cur/MybestSoFar.pkl'
 
     ###============================================================================================================
     ### (1) set parser
@@ -442,7 +444,7 @@ if __name__ == "__main__":
     ###============================================================================================================
     ### (5) train
     ###============================================================================================================
-    train(cfg, writer, logger, fname_weight_init)
+    train(cfg, writer, logger)
 
 
 #end

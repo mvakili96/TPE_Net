@@ -61,7 +61,8 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
                  augmentations=None,
                  output_size_hmap="size_fmap",
                  n_classes_seg = 19,
-                 n_channels_reg = 3):
+                 n_channels_reg = 3,
+                 network_input_size = None):
 
         # output_size_hmap : "size_img_rsz" or "size_fmap"
 
@@ -91,7 +92,8 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         self.n_channels             = n_channels_reg
 
         self.size_img_ori           = {'h': 1080, 'w': 1920}    # FIXED, DO NOT EDIT
-        self.size_img_rsz           = {'h': 540,  'w': 960}
+        self.size_img_rsz           = network_input_size
+
         self.down_ratio_rsz_fmap    = 4                         # img_rsz/fmap
         self.size_fmap              = {'h': (540 // self.down_ratio_rsz_fmap),
                                        'w': (960 // self.down_ratio_rsz_fmap)}
@@ -248,11 +250,11 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ### 1.6 read triplet image (from file)
         ###=============================================================================================
         if self.n_channels == 1:
-            labelmap_centerline = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_image)
+            labelmap_centerline = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_image,self.size_img_rsz)
         elif self.n_channels == 3:
-            labelmap_centerline = myhelper_railsem19_b.read_triplet_C_from_file(full_fname_triplet_C)
-            labelmap_leftrail   = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_L)
-            labelmap_rightrail  = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_R)
+            labelmap_centerline = myhelper_railsem19_b.read_triplet_C_from_file(full_fname_triplet_C,self.size_img_rsz)
+            labelmap_leftrail   = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_L,self.size_img_rsz)
+            labelmap_rightrail  = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_R,self.size_img_rsz)
             labelmap_leftright = np.concatenate((labelmap_leftrail, labelmap_rightrail), axis=0)
             output_labelmap_leftright  = torch.from_numpy(labelmap_leftright).float()
 

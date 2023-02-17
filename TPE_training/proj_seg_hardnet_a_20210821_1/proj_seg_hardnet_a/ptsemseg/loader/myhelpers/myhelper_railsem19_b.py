@@ -12,7 +12,7 @@ import math
 import copy
 from scipy.signal import find_peaks
 import tifffile as tiff
-
+from torchvision.transforms import ToTensor
 from ptsemseg.loader.myhelpers.lib.image import draw_umich_gaussian, gaussian_radius
 
 
@@ -63,7 +63,7 @@ def read_img_raw_jpg_from_file(full_fname_img_raw_jpg, size_img_rsz,
     ###================================================================================================
     ### convert img_raw to img_data
     ###================================================================================================
-    img_raw_rsz_fl_n_final = convert_img_ori_to_img_data(img_raw_rsz_uint8)
+    img_raw_rsz_fl_n_final = convert_img_ori_to_img_data(img_raw_rsz_uint8, size_img_rsz)
         # completed to set
         #       img_raw_rsz_fl_n_final: ndarray(C,H,W), -X.0 ~ X.0
 
@@ -84,6 +84,7 @@ def read_img_raw_jpg_from_file(full_fname_img_raw_jpg, size_img_rsz,
 ###
 ########################################################################################################################
 def convert_img_ori_to_img_data(img_ori_uint8,
+                                size_image,
                                 rgb_mean=np.array([128.0, 128.0, 128.0]) / 255.0,
                                 rgb_std=np.array([1.0, 1.0, 1.0])):
 
@@ -102,41 +103,17 @@ def convert_img_ori_to_img_data(img_ori_uint8,
     #   (5) make sure it is float32 type
     #/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-    ###================================================================================================
-    ### (1) normalize so that 0~255 -> 0.0~1.0
-    ###================================================================================================
-    img_ori_fl = img_ori_uint8.astype(np.float32) / 255.0
-
-
-    ###================================================================================================
-    ### (2) apply rgb_mean
-    ###================================================================================================
-    img_ori_fl_n = img_ori_fl - rgb_mean
-        # completed to set
-        #       img_ori_fl_n: -X.0 ~ X.0, ndarray(H,W,C)
-
-
-    ###================================================================================================
-    ### (3) apply rgb_std
-    ###================================================================================================
-    img_ori_fl_n = img_ori_fl_n / rgb_std
-
-
-    ###================================================================================================
-    ### (4) convert HWC -> CHW
-    ###================================================================================================
-    img_ori_fl_n = img_ori_fl_n.transpose(2, 0, 1)
-        # H(0),W(1),C(2) -> C(2),H(0),W(1)
-        # completed to set
-        #       img_ori_fl_n: -1.0 ~ 1.0, ndarray(C,H,W)
-
-
-    ###================================================================================================
-    ### (5) make sure it is float32 type
-    ###================================================================================================
-    img_data_fl_n_final = img_ori_fl_n.astype(np.float32)
-
+    if size_image["h"] == 540:
+        img_ori_fl = img_ori_uint8.astype(np.float32) / 255.0
+        img_ori_fl_n = img_ori_fl - rgb_mean
+        img_ori_fl_n = img_ori_fl_n / rgb_std
+        img_ori_fl_n = img_ori_fl_n.transpose(2, 0, 1)
+        img_data_fl_n_final = img_ori_fl_n.astype(np.float32)
+    elif size_image["h"] == 512:
+        img_data_fl_n_final = np.array(img_ori_uint8, np.float32).transpose(2, 0, 1) / 255.0 * 3.2 - 1.6
+    elif size_image["h"] == 720:
+        img_data_fl_n_final = ToTensor()(img_ori_uint8)
+        img_data_fl_n_final = img_data_fl_n_final.numpy()
 
     return img_data_fl_n_final
         # ndarray(C,H,W), -X.0 ~ X.0
@@ -224,14 +201,13 @@ def read_label_seg_png_from_file(full_fname_label_seg_png, size_img_rsz):
         # completed to set
         #       img_raw_rsz_uint8
 
-
     return img_raw_rsz_uint8
 #end
 
 ########################################################################################################################
 ###
 ########################################################################################################################
-def read_triplet_image_from_file(full_fname_triplet_image_png):
+def read_triplet_image_from_file(full_fname_triplet_image_png,size_img_rsz):
 
     ###================================================================================================
     ### read label_seg_png
@@ -239,7 +215,13 @@ def read_triplet_image_from_file(full_fname_triplet_image_png):
     img_raw = cv2.imread(full_fname_triplet_image_png,cv2.IMREAD_GRAYSCALE)
         # completed to set
         #       img_raw: ndarray(H,W,C), 0 ~ 255
-    img_reshaped = np.array([img_raw])
+    if size_img_rsz['w'] != 960 or size_img_rsz['h'] != 540:
+        img_raw_rsz = cv2.resize(img_raw, (size_img_rsz['w'], size_img_rsz['h']))
+    else:
+        img_raw_rsz = img_raw
+
+
+    img_reshaped = np.array([img_raw_rsz])
 
     return img_reshaped
 #end
@@ -247,7 +229,7 @@ def read_triplet_image_from_file(full_fname_triplet_image_png):
 ########################################################################################################################
 ###
 ########################################################################################################################
-def read_triplet_C_from_file(full_fname_triplet_C_tiff):
+def read_triplet_C_from_file(full_fname_triplet_C_tiff,size_img_rsz):
 
     ###================================================================================================
     ### read label_seg_png
@@ -255,8 +237,12 @@ def read_triplet_C_from_file(full_fname_triplet_C_tiff):
     img_raw = tiff.imread(full_fname_triplet_C_tiff)
         # completed to set
         #       img_raw: ndarray(H,W,C), 0 ~ 255
-    img_reshaped = np.array([img_raw])
+    if size_img_rsz['w'] != 960 or size_img_rsz['h'] != 540:
+        img_raw_rsz = cv2.resize(img_raw, (size_img_rsz['w'], size_img_rsz['h']))
+    else:
+        img_raw_rsz = img_raw
 
+    img_reshaped = np.array([img_raw_rsz])
     return img_reshaped
 #end
 

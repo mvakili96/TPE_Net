@@ -4,6 +4,9 @@ import torchvision.models as models
 
 from ptsemseg.models.hardnet import hardnet
 from ptsemseg.models.rpnet_c import rpnet_c
+from ptsemseg.models.comparison_models import DinkNet34
+from ptsemseg.models.comparison_models import ERFNet
+
 
 
 
@@ -29,7 +32,9 @@ def _get_model_instance(name):
     try:
         return {
             "hardnet": hardnet,
-            "rpnet_c": rpnet_c
+            "rpnet_c": rpnet_c,
+            "dlinknet_34": DinkNet34,
+            "erfnet": ERFNet
         }[name]
     except:
         raise ("Model {} not available".format(name))
