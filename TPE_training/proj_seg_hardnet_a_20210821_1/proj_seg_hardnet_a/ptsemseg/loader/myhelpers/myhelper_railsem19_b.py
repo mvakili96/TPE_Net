@@ -20,7 +20,7 @@ from ptsemseg.loader.myhelpers.lib.image import draw_umich_gaussian, gaussian_ra
 ########################################################################################################################
 ###
 ########################################################################################################################
-def read_img_raw_jpg_from_file(full_fname_img_raw_jpg, size_img_rsz,
+def read_img_raw_jpg_from_file(full_fname_img_raw_jpg, size_img_rsz,arch,
                                 rgb_mean = np.array([128.0, 128.0, 128.0]) / 255.0,
                                 rgb_std = np.array([1.0, 1.0, 1.0])):
 
@@ -63,7 +63,7 @@ def read_img_raw_jpg_from_file(full_fname_img_raw_jpg, size_img_rsz,
     ###================================================================================================
     ### convert img_raw to img_data
     ###================================================================================================
-    img_raw_rsz_fl_n_final = convert_img_ori_to_img_data(img_raw_rsz_uint8, size_img_rsz)
+    img_raw_rsz_fl_n_final = convert_img_ori_to_img_data(img_raw_rsz_uint8, arch)
         # completed to set
         #       img_raw_rsz_fl_n_final: ndarray(C,H,W), -X.0 ~ X.0
 
@@ -84,7 +84,7 @@ def read_img_raw_jpg_from_file(full_fname_img_raw_jpg, size_img_rsz,
 ###
 ########################################################################################################################
 def convert_img_ori_to_img_data(img_ori_uint8,
-                                size_image,
+                                arch,
                                 rgb_mean=np.array([128.0, 128.0, 128.0]) / 255.0,
                                 rgb_std=np.array([1.0, 1.0, 1.0])):
 
@@ -103,17 +103,20 @@ def convert_img_ori_to_img_data(img_ori_uint8,
     #   (5) make sure it is float32 type
     #/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    if size_image["h"] == 540:
+    if arch == "rpnet_c" or arch == "bisenet_v2":
         img_ori_fl = img_ori_uint8.astype(np.float32) / 255.0
         img_ori_fl_n = img_ori_fl - rgb_mean
         img_ori_fl_n = img_ori_fl_n / rgb_std
         img_ori_fl_n = img_ori_fl_n.transpose(2, 0, 1)
         img_data_fl_n_final = img_ori_fl_n.astype(np.float32)
-    elif size_image["h"] == 512:
+    elif arch == "dlinknet_34":
         img_data_fl_n_final = np.array(img_ori_uint8, np.float32).transpose(2, 0, 1) / 255.0 * 3.2 - 1.6
-    elif size_image["h"] == 720:
+    elif arch == "erfnet":
         img_data_fl_n_final = ToTensor()(img_ori_uint8)
         img_data_fl_n_final = img_data_fl_n_final.numpy()
+    else:
+        raise ("No model found for converting image to data")
+
 
     return img_data_fl_n_final
         # ndarray(C,H,W), -X.0 ~ X.0

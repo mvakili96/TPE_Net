@@ -23,14 +23,15 @@ def load_my_state_dict(model, state_dict):  #custom function to load model when 
     own_state = model.state_dict()
     for name, param in state_dict.items():
         if name not in own_state:
-             continue
+            continue
+        print("HI")
         own_state[name].copy_(param)
     return model
 
 ########################################################################################################################
 ### load model from weights-to-be-loaded
 ########################################################################################################################
-def load_weights_to_model(model, fname_weights_to_be_loaded):
+def load_weights_to_model(model, fname_weights_to_be_loaded, arch, train=True):
     #////////////////////////////////////////////////////////////////////////////////////////////////////////////
     # model: empty model, which we want to fill in by weights-to-be-loaded
     # fname_weights_to_be_loaded: path to a file of weights-to-be-loaded
@@ -40,11 +41,16 @@ def load_weights_to_model(model, fname_weights_to_be_loaded):
     #  state_dict_model  : network structure from model
     #  state_dict_weights: network weights from file
 
+    if arch == "rpnet_c":
+        train = True
 
     ###================================================================================================
     ### 1. load weights-to-be-loaded from a file
     ###================================================================================================
-    state_dict_weights0 = torch.load(fname_weights_to_be_loaded)["model_state"]
+    if train:
+        state_dict_weights0 = torch.load(fname_weights_to_be_loaded)["model_state"]
+    else:
+        state_dict_weights0 = torch.load(fname_weights_to_be_loaded)
     print('loaded weights-to-be-loaded form %s !' % fname_weights_to_be_loaded)
         # completed to set
             #       state_dict_weights0{}: weights loaded from weights-to-be-loaded file
@@ -63,8 +69,7 @@ def load_weights_to_model(model, fname_weights_to_be_loaded):
             state_dict_weights[key] = state_dict_weights0[key]
         #end
     #end
-        # completed to set
-        #       state_dict_weights{}
+
 
     ###================================================================================================
     ### 3. selective copy (2): copy state_dict_model[] -> state_dict_weights[]
@@ -73,9 +78,15 @@ def load_weights_to_model(model, fname_weights_to_be_loaded):
     #   state_dict{}       : from weights_to_be_loaded
     #   model_state_dict{} : from model
 
-    state_dict_model = model.state_dict()
+    state_dict_model0 = model.state_dict()
         # completed to set
         #       model_state_dict[]: empty model, which we want to fill in by pretrained-weights
+    if not train:
+        state_dict_model = OrderedDict()
+        for key in state_dict_model0:
+            state_dict_model[str("module."+key)] = state_dict_model0[key]
+    else:
+        state_dict_model = state_dict_model0
 
 
     ###

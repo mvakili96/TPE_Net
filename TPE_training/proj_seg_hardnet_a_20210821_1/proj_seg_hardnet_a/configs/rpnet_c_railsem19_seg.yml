@@ -1,9 +1,15 @@
 model:
-    arch: erfnet
-weight_init:
+    arch: bisenet_v2
+weight_init_t:
     rpnet_c: '../runs/hardnet/cur/MybestSoFar.pkl'
+    dlinknet_34: '../runs/hardnet/cur/Mybest_19600.pkl'
+    erfnet: '../runs/hardnet/cur/Mybest_6000.pkl'
+    bisenet_v2: -1
+weight_init_p:
+    rpnet_c: '../runs/hardnet/cur/hardnet_best.pkl'
     dlinknet_34: -1
     erfnet: '../runs/hardnet/cur/erfnet.pth'
+    bisenet_v2: -1
 data:
     dataset: railsem19_seg_triplet_b
     train_split: train
@@ -23,14 +29,14 @@ training:
     optimizer:
         name: 'adam'
         adam:
-            lr: 0.001
+            lr: 0.01
             weight_decay: 0.0005
         sgd:
             lr: 0.001
             weight_decay: 0.0005
             momentum: 0.9
     loss:
-        name: 'ce_weighted'
+        name: 'bootstrapped_cross_entropy'
         min_K: 8192
         loss_th: 0.3
         size_average: True

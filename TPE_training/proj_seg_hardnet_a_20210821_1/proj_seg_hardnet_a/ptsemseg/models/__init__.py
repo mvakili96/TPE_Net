@@ -6,7 +6,7 @@ from ptsemseg.models.hardnet import hardnet
 from ptsemseg.models.rpnet_c import rpnet_c
 from ptsemseg.models.comparison_models import DinkNet34
 from ptsemseg.models.comparison_models import ERFNet
-
+from ptsemseg.models.comparison_models import Bisenet_v2
 
 
 
@@ -34,7 +34,8 @@ def _get_model_instance(name):
             "hardnet": hardnet,
             "rpnet_c": rpnet_c,
             "dlinknet_34": DinkNet34,
-            "erfnet": ERFNet
+            "erfnet": ERFNet,
+            "bisenet_v2": Bisenet_v2,
         }[name]
     except:
         raise ("Model {} not available".format(name))

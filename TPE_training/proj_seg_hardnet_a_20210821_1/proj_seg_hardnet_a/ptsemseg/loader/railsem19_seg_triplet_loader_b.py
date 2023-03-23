@@ -62,7 +62,8 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
                  output_size_hmap="size_fmap",
                  n_classes_seg = 19,
                  n_channels_reg = 3,
-                 network_input_size = None):
+                 network_input_size = None,
+                 arch_this = None):
 
         # output_size_hmap : "size_img_rsz" or "size_fmap"
 
@@ -98,6 +99,8 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         self.size_fmap              = {'h': (540 // self.down_ratio_rsz_fmap),
                                        'w': (960 // self.down_ratio_rsz_fmap)}
 
+
+        self.arch_this = arch_this
         ###
         self._set_FACTOR()
 
@@ -224,6 +227,7 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         img_raw_rsz_uint8, \
         img_raw_rsz_fl_n = myhelper_railsem19_b.read_img_raw_jpg_from_file(full_fname_img_raw_jpg,
                                                                            self.size_img_rsz,
+                                                                           self.arch_this,
                                                                            self.rgb_mean,
                                                                            self.rgb_std)
 
