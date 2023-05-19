@@ -795,8 +795,8 @@ class BGALayer(nn.Module):
                 128, 128, kernel_size=1, stride=1,
                 padding=0, bias=False),
         )
-        self.up1 = nn.Upsample(scale_factor=4)
-        self.up2 = nn.Upsample(scale_factor=4)
+        # self.up1 = nn.Upsample(scale_factor=4)
+        # self.up2 = nn.Upsample(scale_factor=4)
         self.conv = nn.Sequential(
             nn.Conv2d(
                 128, 128, kernel_size=3, stride=1,
@@ -811,21 +811,22 @@ class BGALayer(nn.Module):
         left2 = self.left2(x_d)
         right1 = self.right1(x_s)
         right2 = self.right2(x_s)
-        right1 = self.up1(right1)
+        # right1 = self.up1(right1)
 
         size_in = left1.size()
-        right1 =  F.sigmoid(F.interpolate(right1, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True))
+        right1 =  F.relu(F.interpolate(right1, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True))
 
-        left = left1 * torch.sigmoid(right1)
-        right = left2 * torch.sigmoid(right2)
-        right = self.up2(right)
+        # left = left1 * torch.sigmoid(right1)
+        left = left1 * right1
+        right = left2 * F.relu(right2)
+        # right = self.up2(right)
 
         right = F.interpolate(right, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
         out = self.conv(left + right)
         return out
 
 class SegmentHead(nn.Module):
-    def __init__(self, in_chan, mid_chan, n_classes, up_factor=8, aux=True):
+    def __init__(self, in_chan, mid_chan, n_classes, up_factor=8, aux=False):
         super(SegmentHead, self).__init__()
         self.conv = ConvBNReLU(in_chan, mid_chan, 3, stride=1)
         self.drop = nn.Dropout(0.1)
@@ -869,10 +870,10 @@ class Bisenet_v2(nn.Module):
         super().__init__()
         self.n_channels_reg = n_channels_reg
 
-        self.detail = DetailBranch()
+        self.detail  = DetailBranch()
         self.segment = SegmentBranch()
         self.bga = BGALayer()
-        self.head = SegmentHead(128, 1024, n_classes_seg, up_factor=8, aux=False)
+        self.head = SegmentHead(128, 1024, n_classes_seg, up_factor=8)
         # self.head = SegmentationHead(128, n_classes_seg)
         self.aux2   = SegmentHead(16, 128, n_classes_seg, up_factor=4)
         self.aux3   = SegmentHead(32, 128, n_classes_seg, up_factor=8)
@@ -883,7 +884,7 @@ class Bisenet_v2(nn.Module):
         if n_channels_reg == 3:
             self.finalconvLR = nn.Conv2d(128+n_classes_seg, 2, 1, stride=1, padding=0, bias=True)
 
-        self.init_weights()
+        # self.init_weights()
 
 
     def forward(self,x):

@@ -4,7 +4,7 @@ weight_init_t:
     rpnet_c: '../runs/hardnet/cur/MybestSoFar.pkl'
     dlinknet_34: '../runs/hardnet/cur/Mybest_19600.pkl'
     erfnet: '../runs/hardnet/cur/Mybest_6000.pkl'
-    bisenet_v2: -1
+    bisenet_v2: '../runs/hardnet/cur/Mybest_20000.pkl'
 weight_init_p:
     rpnet_c: '../runs/hardnet/cur/hardnet_best.pkl'
     dlinknet_34: -1
@@ -27,9 +27,9 @@ training:
     n_workers: 0
     print_interval: 100
     optimizer:
-        name: 'adam'
+        name: 'sgd'
         adam:
-            lr: 0.01
+            lr: 0.025
             weight_decay: 0.0005
         sgd:
             lr: 0.001

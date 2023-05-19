@@ -261,6 +261,7 @@ def train(cfg, writer, logger):
                 loss_fn(input=aux3, target=gt_imgs_label_seg, train_val=0, dev=device) + \
                 loss_fn(input=aux4, target=gt_imgs_label_seg, train_val=0, dev=device) + \
                 loss_seg_unique
+                # loss_seg = loss_seg_unique
 
 
             loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
@@ -344,11 +345,16 @@ def train(cfg, writer, logger):
                         gt_imgs_label_seg      = gt_imgs_label_seg.to(device)
                         gt_labelmap_centerline = gt_labelmap_centerline.to(device)
 
-
-                        if n_channels_regression == 1:
-                            outputs_seg, outputs_centerline =  model(imgs_raw_fl_n)
-                        elif n_channels_regression == 3:
-                            outputs_seg, outputs_centerline, outputs_leftright = model(imgs_raw_fl_n)
+                        if cfg["model"]["arch"] != "bisenet_v2":
+                            if n_channels_regression == 1:
+                                outputs_seg, outputs_centerline =  model(imgs_raw_fl_n)
+                            elif n_channels_regression == 3:
+                                outputs_seg, outputs_centerline, outputs_leftright = model(imgs_raw_fl_n)
+                        else:
+                            if n_channels_regression == 1:
+                                outputs_seg, outputs_centerline, aux1, aux2, aux3, aux4 = model(imgs_raw_fl_n)
+                            elif n_channels_regression == 3:
+                                outputs_seg, outputs_centerline, outputs_leftright, aux1, aux2, aux3, aux4 = model(imgs_raw_fl_n)
 
 
 
