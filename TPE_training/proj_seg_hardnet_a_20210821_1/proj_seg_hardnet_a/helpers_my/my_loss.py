@@ -145,7 +145,7 @@ def Discriminative_loss(x_est, x_gt, var_margin, dis_margin):
 ########################################################################################################################
 ###
 ########################################################################################################################
-def MSE_loss(x_est, x_gt):
+def MSE_loss(x_est, x_gt, b_sigmoid):
     #////////////////////////////////////////////////////////////////////////////////////////////////////////////
     # x_est: (bs, 1, h, w), here 1 is the number of class
     # x_gt: (bs, 1, h, w)
@@ -162,8 +162,8 @@ def MSE_loss(x_est, x_gt):
 
     #target = target.view(-1)
 
-
-    x_est = torch.clamp(torch.sigmoid(x_est), min=1e-4, max=1 - 1e-4)
+    if b_sigmoid is True:
+        x_est = torch.clamp(x_est, min=1e-4, max=100)
 
     #x_est = x_est.view(-1)
     #x_gt = x_gt.view(-1)

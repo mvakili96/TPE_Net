@@ -99,7 +99,8 @@ def train(cfg, writer, logger, fname_weight_init):
     ###---------------------------------------------------------------------------------------------------
     ### set n_classes_seg
     ###---------------------------------------------------------------------------------------------------
-    n_classes_seg = t_loader_head.n_classes
+    n_classes_seg = t_loader_head.n_classes_seg
+    n_classes_ins = t_loader_head.n_classes_ins
 
     ###============================================================================================================
     ### (2) setup model
@@ -108,7 +109,7 @@ def train(cfg, writer, logger, fname_weight_init):
     ###---------------------------------------------------------------------------------------------------
     ### setup model
     ###---------------------------------------------------------------------------------------------------
-    model = get_model(cfg["model"], n_classes_seg).to(device)
+    model = get_model(cfg["model"], n_classes_ins, n_classes_seg).to(device)
 
     # total_params = sum(p.numel() for p in model.parameters())
     # print( 'Parameters:',total_params )
@@ -211,6 +212,8 @@ def train(cfg, writer, logger, fname_weight_init):
     loss_accum_var = 0
     loss_accum_dis = 0
     loss_accum_reg = 0
+    loss_accum_seg = 0
+    loss_accum_centerline = 0
 
     num_loss = 0
 
@@ -230,14 +233,12 @@ def train(cfg, writer, logger, fname_weight_init):
             gt_ins_pose                          = data_batch['gt_instances']
             gt_labelmap_centerline               = data_batch['gt_labelmap_centerline']           # (bs, 1, h_rsz, w_rsz)
             gt_labelmap_leftright                = data_batch['gt_labelmap_leftright']            # (bs, 2, h_rsz, w_rsz)
-            gt_labelmap_centerline_priority      = data_batch['gt_labelmap_centerline_priority']           # (bs, 1, h_rsz, w_rsz)
 
 
             imgs_raw_fl_n           = imgs_raw_fl_n.to(device)
             gt_imgs_label_seg       = gt_imgs_label_seg.to(device)
             gt_ins_pose             = gt_ins_pose.to(device)
             gt_labelmap_centerline  = gt_labelmap_centerline.to(device)
-            gt_labelmap_centerline_priority = gt_labelmap_centerline_priority.to(device)
             gt_labelmap_leftright   = gt_labelmap_leftright.to(device)
 
             ###
@@ -246,12 +247,14 @@ def train(cfg, writer, logger, fname_weight_init):
             optimizer.zero_grad()
 
             ###
-            output_instance = model(imgs_raw_fl_n)
+            output_instance, outputs_seg, outputs_centerline = model(imgs_raw_fl_n)
             ###============================================================================================================
             ### (8) Loss
             ###============================================================================================================
             loss_instance, dis_loss, reg_loss, var_loss = my_loss.Discriminative_loss(output_instance,gt_ins_pose,0.5,3)
-            loss_this = loss_instance
+            loss_seg = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val=0)
+            loss_centerline = my_loss.MSE_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, b_sigmoid=True)
+            loss_this = loss_instance + loss_seg + 0.08 * loss_centerline
 
             ###
             loss_this.backward()
@@ -268,6 +271,8 @@ def train(cfg, writer, logger, fname_weight_init):
             loss_accum_var += var_loss.item()
             loss_accum_dis += dis_loss.item()
             loss_accum_reg += reg_loss.item()
+            loss_accum_seg        += loss_seg.item()
+            loss_accum_centerline += loss_centerline.item()
 
 
             num_loss += 1
@@ -276,7 +281,7 @@ def train(cfg, writer, logger, fname_weight_init):
             ### print (on demand)
             if (i + 1) % cfg["training"]["print_interval"] == 0:
                 ###
-                fmt_str = "Iter [{:d}/{:d}]  Loss (all): {:.7f}, Loss (var): {:.7f}, Loss (dis): {:.7f}, Loss (reg): {:.7f}, Time/Image: {:.7f}  lr={:.7f}"
+                fmt_str = "Iter [{:d}/{:d}]  Loss (all): {:.7f}, Loss (var): {:.7f}, Loss (dis): {:.7f}, Loss (reg): {:.7f}, Loss (seg): {:.7f}, Loss (centerline): {:.7f}, lr={:.7f}"
 
                 print_str = fmt_str.format(
                     i + 1,
@@ -285,7 +290,8 @@ def train(cfg, writer, logger, fname_weight_init):
                     loss_accum_var        / num_loss,
                     loss_accum_dis        / num_loss,
                     loss_accum_reg        / num_loss,
-                    time_meter.avg / cfg["training"]["batch_size"],
+                    loss_accum_seg        / num_loss,
+                    loss_accum_centerline / num_loss,
                     c_lr[0],
                 )
 
@@ -300,12 +306,16 @@ def train(cfg, writer, logger, fname_weight_init):
             ### validate (on demand)
             ################################################################################################
             if (i + 1) % cfg["training"]["val_interval"] == 0 or (i + 1) == cfg["training"]["train_iters"]:
-                loss_accum_regularizer_validation = 0
                 loss_accum_distance_validation    = 0
                 loss_accum_variance_validation    = 0
                 loss_accum_instance_validation    = 0
+                loss_accum_regularizer_validation = 0
+                loss_accum_segmentation_validation    = 0
+                loss_accum_centerline_validation      = 0
+
+
                 num_loss_validation = 0
-                if (i + 1) % 1000 == 0:
+                if (i + 1) % 10000 == 0:
                     for data_batch_validation in v_loader_batch:
                         imgs_raw_fl_n          = data_batch_validation['img_raw_fl_n']                            # (bs, 3, h_rsz, w_rsz)
                         gt_ins_positions       = data_batch_validation['gt_instances']
@@ -320,20 +330,25 @@ def train(cfg, writer, logger, fname_weight_init):
                         gt_labelmap_leftright  = gt_labelmap_leftright.to(device)
 
 
-                        v_output_instance =  model(imgs_raw_fl_n)
+                        v_output_instance, v_output_segmentation, v_output_centerline  =  model(imgs_raw_fl_n)
 
                         loss_ins, distance_loss, regularizer_loss, variance_loss = my_loss.Discriminative_loss(v_output_instance,gt_ins_positions,0.5,3)
+                        seg_loss = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val=1)
+                        centerline_loss = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, b_sigmoid=True)
 
 
                         loss_accum_instance_validation     += loss_ins.item()
                         loss_accum_variance_validation     += variance_loss.item()
                         loss_accum_distance_validation     += distance_loss.item()
                         loss_accum_regularizer_validation  += regularizer_loss.item()
+                        loss_accum_segmentation_validation     += seg_loss.item()
+                        loss_accum_centerline_validation     += centerline_loss.item()
+
 
 
                         num_loss_validation += 1
 
-                    fmt_str = "(VALIDATION) Iter [{:d}/{:d}], Loss (instance): {:.7f}, Loss (var): {:.7f}, Loss (dis): {:.7f}, Loss (reg): {:.7f}"
+                    fmt_str = "(VALIDATION) Iter [{:d}/{:d}], Loss (instance): {:.7f}, Loss (var): {:.7f}, Loss (dis): {:.7f}, Loss (reg): {:.7f}, Loss (segmentation): {:.7f}, Loss (centerline): {:.7f}"
 
                     print_str = fmt_str.format(
                         i + 1,
@@ -341,7 +356,9 @@ def train(cfg, writer, logger, fname_weight_init):
                         loss_accum_instance_validation / num_loss_validation,
                         loss_accum_variance_validation / num_loss_validation,
                         loss_accum_distance_validation / num_loss_validation,
-                        loss_accum_regularizer_validation  / num_loss_validation
+                        loss_accum_regularizer_validation  / num_loss_validation,
+                        loss_accum_segmentation_validation / num_loss_validation,
+                        loss_accum_centerline_validation / num_loss_validation
                     )
 
                     print(print_str)
@@ -390,7 +407,7 @@ if __name__ == "__main__":
     ###============================================================================================================
 
     fname_config = '../configs/rpnet_c_railsem19_seg.yml'
-    fname_weight_init = '../runs/hardnet/cur/hardnet_best.pkl'
+    fname_weight_init = '../runs/hardnet/cur/MybestSoFar.pkl'
 
     ###============================================================================================================
     ### (1) set parser

@@ -85,7 +85,9 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         ###=============================================================================================
         self.rgb_mean               = np.array([128.0, 128.0, 128.0])/255.0     # for pixel value 0.0 ~ 1.0
         self.rgb_std                = np.array([1.0, 1.0, 1.0])                 # for pixel value 0.0 ~ 1.0
-        self.n_classes              = 16
+        self.n_classes_ins          = 16
+        self.n_classes_seg          = 3
+
 
         self.size_img_ori           = {'h': 1080, 'w': 1920}    # FIXED, DO NOT EDIT
         self.size_img_rsz           = {'h': 540,  'w': 960}
@@ -104,8 +106,6 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         self.dir_label_seg_png  = dir_root_data_seg     + 'uint8/rs19_val_modified/'
         self.dir_label_ins_json = dir_root_data_seg     + 'uint8/instance_json/'
 
-        self.dir_label_seg_png_for_regu = dir_root_data_seg + 'uint8/rs19_val_modi_for_regu/'
-        self.dir_label_seg_png_for_regu2 = dir_root_data_seg + 'uint8/rs19_val_for_regu_2/'
         self.dir_triplet_json   = dir_root_data_triplet + 'my_triplet_json/'
 
 
