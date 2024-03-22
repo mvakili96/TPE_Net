@@ -36,6 +36,7 @@ def read_img_raw_jpg_from_file(full_fname_img_raw_jpg, size_img_rsz,arch,
     ###================================================================================================
     ### read img_raw_jpg
     ###================================================================================================
+    # print(full_fname_img_raw_jpg)
     img_raw = cv2.imread(full_fname_img_raw_jpg)
         # completed to set
         #       img_raw: ndarray(H,W,C), 0 ~ 255
@@ -109,12 +110,14 @@ def convert_img_ori_to_img_data(img_ori_uint8,
         img_ori_fl_n = img_ori_fl_n / rgb_std
         img_ori_fl_n = img_ori_fl_n.transpose(2, 0, 1)
         img_data_fl_n_final = img_ori_fl_n.astype(np.float32)
-    # elif arch == "bisenet_v2":
-    #     img_ori_fl = img_ori_uint8.astype(np.float32) / 255.0
-    #     img_ori_fl_n = img_ori_fl - np.array([0.3257, 0.3690, 0.3223])
-    #     img_ori_fl_n = img_ori_fl_n / np.array([0.2112, 0.2148, 0.2115])
-    #     img_ori_fl_n = img_ori_fl_n.transpose(2, 0, 1)
-    #     img_data_fl_n_final = img_ori_fl_n.astype(np.float32)
+    elif arch == "res_101":
+        IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
+        IMAGENET_STD = np.array([0.229, 0.224, 0.225])
+        img_ori_fl = img_ori_uint8.astype(np.float32) / 255.0
+        img_ori_fl_n = img_ori_fl - IMAGENET_MEAN
+        img_ori_fl_n = img_ori_fl_n / IMAGENET_STD
+        img_ori_fl_n = img_ori_fl_n.transpose(2, 0, 1)
+        img_data_fl_n_final = img_ori_fl_n.astype(np.float32)
     elif arch == "dlinknet_34":
         img_data_fl_n_final = np.array(img_ori_uint8, np.float32).transpose(2, 0, 1) / 255.0 * 3.2 - 1.6
     elif arch == "erfnet":

@@ -4,9 +4,11 @@ import torchvision.models as models
 
 from ptsemseg.models.hardnet import hardnet
 from ptsemseg.models.rpnet_c import rpnet_c
+from ptsemseg.models.rpnet_c import res_101
 from ptsemseg.models.comparison_models import DinkNet34
 from ptsemseg.models.comparison_models import ERFNet
 from ptsemseg.models.comparison_models import Bisenet_v2
+from efficientnet_pytorch import EfficientNet
 
 
 
@@ -33,6 +35,7 @@ def _get_model_instance(name):
         return {
             "hardnet": hardnet,
             "rpnet_c": rpnet_c,
+            "res_101": res_101,
             "dlinknet_34": DinkNet34,
             "erfnet": ERFNet,
             "bisenet_v2": Bisenet_v2,

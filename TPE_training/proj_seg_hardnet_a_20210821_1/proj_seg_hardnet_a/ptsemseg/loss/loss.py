@@ -120,3 +120,102 @@ def CrossEntropyLoss2d_Weighted(input, target, min_K, loss_th, weight=None, size
     class_weights = class_weights.to(dev)
     NLLloss = torch.nn.NLLLoss2d(class_weights)
     return NLLloss(torch.nn.functional.log_softmax(input, dim=1), target)
+
+
+def PolyLaneNet_loss(outputs,
+         target,
+         conf_weight=1,
+         lower_weight=1,
+         upper_weight=1,
+         cls_weight=1,
+         poly_weight=300,
+         threshold=15 / 720.):
+    pred = outputs
+    bce = nn.BCELoss()
+    mse = nn.MSELoss()
+    s = nn.Sigmoid()
+    threshold = nn.Threshold(threshold**2, 0.)
+    pred = pred.reshape(-1, target.shape[1], 9)
+
+    target_categories, pred_confs     = target[:, :, 0].reshape((-1, 1)), s(pred[:, :, 0]).reshape((-1, 1))
+    target_uppers_h, pred_uppers_h    = target[:, :, 2].reshape((-1, 1)), pred[:, :, 2].reshape((-1, 1))
+    target_uppers_w, pred_uppers_w    = target[:, :, 4].reshape((-1, 1)), pred[:, :, 4].reshape((-1, 1))
+    target_points, pred_polys         = target[:, :, 5:].reshape((-1, target.shape[2] - 5)), pred[:, :, 5:].reshape(-1, 4)
+    target_lowers_h, pred_lowers_h    = target[:, :, 1].reshape((-1, 1)), pred[:, :, 1].reshape((-1, 1))
+    target_lowers_w, pred_lowers_w    = target[:, :, 3].reshape((-1, 1)), pred[:, :, 3].reshape((-1, 1))
+
+
+    target_confs = (target_categories > 0).float()
+
+    valid_lanes_idx = target_confs == 1
+    valid_lanes_idx_flat = valid_lanes_idx.reshape(-1)
+
+
+
+
+    # batch_size = target.shape[0]
+    # for i in range(0,batch_size):
+    #     PRED_vectors_cur_img = pred[i]
+    #     GT_vectors_cur_img   = target[i]
+    #
+    #     GT_categories, PRED_confs = GT_vectors_cur_img[:, 0].reshape((-1, 1)), s(PRED_vectors_cur_img[:, 0]).reshape((-1, 1))
+    #
+    #     valid_GT_lanes_idx = GT_categories == 1
+    #     valid_GT_lanes_idx_flat = valid_GT_lanes_idx.reshape(-1)
+    #
+    #     valid_PRED_lanes_idx = PRED_confs >= 0.5
+    #     valid_PRED_lanes_idx_flat = valid_PRED_lanes_idx.reshape(-1)
+    #
+    #     GT_uppers, PRED_uppers    = GT_vectors_cur_img[valid_GT_lanes_idx_flat, 2].reshape((-1, 1)), PRED_vectors_cur_img[valid_PRED_lanes_idx_flat, 2].reshape((-1, 1))
+
+
+
+
+
+    lower_loss_h = mse(target_lowers_h[valid_lanes_idx], pred_lowers_h[valid_lanes_idx])
+    upper_loss_h = mse(target_uppers_h[valid_lanes_idx], pred_uppers_h[valid_lanes_idx])
+    lower_loss_w = mse(target_lowers_w[valid_lanes_idx], pred_lowers_w[valid_lanes_idx])
+    upper_loss_w = mse(target_uppers_w[valid_lanes_idx], pred_uppers_w[valid_lanes_idx])
+
+
+    # poly loss calc
+    target_xs = target_points[valid_lanes_idx_flat, :target_points.shape[1] // 2]
+    ys        = target_points[valid_lanes_idx_flat,  target_points.shape[1] // 2:].t()
+    valid_xs = target_xs >= -1
+    pred_polys = pred_polys[valid_lanes_idx_flat]
+    pred_xs = pred_polys[:, 0] * ys**3 + pred_polys[:, 1] * ys**2 + pred_polys[:, 2] * ys + pred_polys[:, 3]
+    pred_xs.t_()
+    weights = (torch.sum(valid_xs, dtype=torch.float32) / torch.sum(valid_xs, dim=1, dtype=torch.float32))**0.5
+    pred_xs = (pred_xs.t_() * weights).t()
+    target_xs = (target_xs.t_() * weights).t()
+    # poly_loss = mse(pred_xs[valid_xs], target_xs[valid_xs]) / valid_lanes_idx.sum()
+    poly_loss = threshold(
+       (pred_xs[valid_xs] - target_xs[valid_xs])**2).sum() / (valid_lanes_idx.sum() * valid_xs.sum())
+
+    # applying weights to partial losses
+    poly_loss  = poly_loss * poly_weight
+    lower_loss_h = lower_loss_h * lower_weight
+    upper_loss_h = upper_loss_h * upper_weight
+    conf_loss  = bce(pred_confs, target_confs) * conf_weight
+
+    print(poly_loss)
+    print(lower_loss_h)
+    print(upper_loss_h)
+    print(conf_loss)
+
+    loss = upper_loss_h + lower_loss_h + conf_loss + poly_loss + upper_loss_w + lower_loss_w
+
+
+    # print(loss)
+    # print(target_lowers[valid_lanes_idx])
+    # print(pred_lowers[valid_lanes_idx])
+
+    return loss
+
+    # # {
+    #     'conf': conf_loss,
+    #     'lower': lower_loss,
+    #     'upper': upper_loss,
+    #     'poly': poly_loss,
+    #     'cls_loss': cls_loss
+    #     }

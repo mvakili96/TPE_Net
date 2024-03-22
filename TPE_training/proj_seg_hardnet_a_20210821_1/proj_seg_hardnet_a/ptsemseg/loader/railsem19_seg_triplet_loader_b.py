@@ -126,6 +126,8 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
             self.dir_triplet_L = dir_root_data_triplet + 'my_triplet_L/'
             self.dir_triplet_R = dir_root_data_triplet + 'my_triplet_R/'
 
+        self.dir_points_poly_regression = 'TARGET/'
+
 
         ###=============================================================================================
         ### 3. read fnames for all the raw-imgs
@@ -161,6 +163,11 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
             self.fnames_triplet_C = myhelper_railsem19_b.read_fnames_trainval(self.dir_triplet_C, 6000)
             self.fnames_triplet_L = myhelper_railsem19_b.read_fnames_trainval(self.dir_triplet_L, 6000)
             self.fnames_triplet_R = myhelper_railsem19_b.read_fnames_trainval(self.dir_triplet_R, 6000)
+
+        ###=============================================================================================
+        ### 8. read fname for all the triplets (json)
+        ###=============================================================================================
+        self.fnames_points_poly_regression = myhelper_railsem19_b.read_fnames_trainval(self.dir_points_poly_regression, 6000)
 
 
     #end
@@ -218,6 +225,8 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
             full_fname_triplet_L  = self.dir_triplet_L  + self.fnames_triplet_L [self.type_trainval][index]
             full_fname_triplet_R  = self.dir_triplet_R  + self.fnames_triplet_R [self.type_trainval][index]
 
+        full_fname_points_poly_regression = self.dir_points_poly_regression + self.fnames_points_poly_regression[self.type_trainval][index]
+
 
 
 
@@ -261,6 +270,13 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
             labelmap_rightrail  = myhelper_railsem19_b.read_triplet_image_from_file(full_fname_triplet_R,self.size_img_rsz)
             labelmap_leftright = np.concatenate((labelmap_leftrail, labelmap_rightrail), axis=0)
             output_labelmap_leftright  = torch.from_numpy(labelmap_leftright).float()
+
+        ###=============================================================================================
+        ### 1.7 read list_ins_json (from file)
+        ###=============================================================================================
+        list_polypoints_json = json.load(open(full_fname_points_poly_regression, 'r'))
+        list_polypoints      = np.array(list_polypoints_json)
+
 
         ###///////////////////////////////////////////////////////////////////////////////////////////////////
         ### 2. processing
@@ -326,6 +342,7 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
         output_img_raw             = torch.from_numpy(img_raw_rsz_fl_n).float()
         output_img_label_seg       = torch.from_numpy(img_label_seg_rsz_uint8).long()
         output_ins_json            = torch.from_numpy(list_ins_json)
+        output_polypoints          = torch.from_numpy(list_polypoints)
         output_labelmap_centerline = torch.from_numpy(labelmap_centerline).float()
         # output_labelmap_centerline_priority = torch.from_numpy(labelmap_centerline_priority).float()
 
@@ -334,14 +351,16 @@ class RailSem19_SegTriplet_b_Loader(data.Dataset):
             output_final = {'img_raw_fl_n'                   : output_img_raw,                              # (3, h_rsz, w_rsz)
                             'gt_img_label_seg'               : output_img_label_seg,                        # (h_rsz, w_rsz)
                             'gt_instances'                   : output_ins_json,                             # (h_rsz, w_rsz)
-                            'gt_labelmap_centerline'         : output_labelmap_centerline}                 # (1, h_rsz, w_rsz)
+                            'gt_labelmap_centerline'         : output_labelmap_centerline,
+                            'gt_polypoints'                  : output_polypoints}
 
         elif self.n_channels == 3:
             output_final = {'img_raw_fl_n'                   : output_img_raw,                              # (3, h_rsz, w_rsz)
                             'gt_img_label_seg'               : output_img_label_seg,                        # (h_rsz, w_rsz)
                             'gt_instances'                   : output_ins_json,                             # (h_rsz, w_rsz)
                             'gt_labelmap_centerline'         : output_labelmap_centerline,                 # (1, h_rsz, w_rsz)
-                            'gt_labelmap_leftright'          : output_labelmap_leftright}
+                            'gt_labelmap_leftright'          : output_labelmap_leftright,
+                            'gt_polypoints'                  : output_polypoints}
 
 
         return output_final

@@ -6,7 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import collections
-
+from torchvision.models import resnet34, resnet50, resnet101
+from efficientnet_pytorch import EfficientNet
 
 ########################################################################################################################
 ### 1.1 ConvLayer (originated from FC-HarDNet)
@@ -296,6 +297,27 @@ class MyDecoder(nn.Sequential):
     #end
 #end
 
+########################################################################################################################
+### A2. For extra outputs
+########################################################################################################################
+
+class OutputLayer(nn.Module):
+    def __init__(self, fc, num_extra):
+        super(OutputLayer, self).__init__()
+        self.regular_outputs_layer = fc
+        self.num_extra = num_extra
+        if num_extra > 0:
+            self.extra_outputs_layer = nn.Linear(fc.in_features, num_extra)
+
+    def forward(self, x):
+        regular_outputs = self.regular_outputs_layer(x)
+        if self.num_extra > 0:
+            extra_outputs = self.extra_outputs_layer(x)
+        else:
+            extra_outputs = None
+
+        return regular_outputs, extra_outputs
+
 
 """
 class ConvLayer(nn.Sequential):
@@ -327,6 +349,33 @@ class ConvLayer(nn.Sequential):
 ########################################################################################################################
 ########################################################################################################################
 
+class res_101(nn.Module):
+    ############################################################################################################
+    ### res_101::__init__()
+    ############################################################################################################
+    def __init__(self, n_classes_seg = 19, n_channels_reg = 3):
+        super(res_101, self).__init__()
+
+        self.n_classes_seg  = n_classes_seg
+        self.n_channels_reg = n_channels_reg
+
+        # self.model = resnet101(pretrained=True)
+        self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=30*9)
+        # self.model.fc = nn.Linear(self.model.fc.in_features, 30*7)
+        # self.model.fc = OutputLayer(self.model.fc, 0)
+        self.model._fc = OutputLayer(self.model._fc, 0)
+
+        self.curriculum_steps = [0, 0, 0, 0]
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x, epoch=None, **kwargs):
+        output, extra_outputs = self.model(x, **kwargs)
+        # for i in range(len(self.curriculum_steps)):
+        #     if epoch is not None and epoch < self.curriculum_steps[i]:
+        #         output[:, -len(self.curriculum_steps) + i] = 0
+        return output
+
+
 
 ########################################################################################################################
 ### 5. rpnet_c
@@ -336,7 +385,6 @@ class rpnet_c(nn.Module):
     ### rpnet_c::__init__()
     ############################################################################################################
     def __init__(self, n_classes_seg = 19, n_channels_reg = 3):
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         super(rpnet_c, self).__init__()
 
         self.n_classes_seg  = n_classes_seg
@@ -466,138 +514,98 @@ class rpnet_c(nn.Module):
             #end
 
 
-            ###///////////////////////////////////////////////////////////////////////////////////////
-            ### <<RPNet - backbone>>
-            ###///////////////////////////////////////////////////////////////////////////////////////
-            # print('idx_blk:[%d], ch_out_HarDBlock_this:[%d]' % (i_blk, ch_out_HarDBlock_this))
-                # idx_blk: [0], ch_out_HarDBlock_this: [48]
-                # idx_blk: [1], ch_out_HarDBlock_this: [78]
-                # idx_blk: [2], ch_out_HarDBlock_this: [160]
-                # idx_blk: [3], ch_out_HarDBlock_this: [214]
-                # idx_blk: [4], ch_out_HarDBlock_this: [286]
-        #end
-        # completed to set
-        #       <<for FC-HarDNet>>
-        #         self.base[]
-        #         self.shortcut_layers[]: having module index (in ModuleList) for shortcut (= here, skip_connection)
-        #         skip_connection_channel_counts[]: having output ch of each HDB block (not transition-down layer)
-        #       <<for RPNet-backbone>>
-        #         self.set_idx_module_HarDBlock[]
-        # ---------------------------------------------------------------------------------------------------------
-        # note that
-        #       skip_connection_channel_counts[] is for creating modules in the below (inside __init__()).
-        #       self.shortcut_layers[] is used in forward().
-        #---------------------------------------------------------------------------------------------------------
-        # created HarDBlock & ConvL having
-        #       idx_blk:[0], HarDBlock<ch_in: [48], ch_out: [48]>, ConvL<ch_in: [48], ch_out: [64]>
-        #       idx_blk:[1], HarDBlock<ch_in: [64], ch_out: [78]>, ConvL<ch_in: [78], ch_out: [96]>
-        #       idx_blk:[2], HarDBlock<ch_in: [96], ch_out: [160]>, ConvL<ch_in: [160], ch_out: [160]>
-        #       idx_blk:[3], HarDBlock<ch_in: [160], ch_out: [214]>, ConvL<ch_in: [214], ch_out: [224]>
-        #       idx_blk:[4], HarDBlock<ch_in: [224], ch_out: [286]>, ConvL<ch_in: [286], ch_out: [320]>
-        #---------------------------------------------------------------------------------------------------------
-        # To see the whole structure,
-        #       please see FC_hardnet at /home/yu1/Desktop/avin_seg/seg_hardnet/
-        #---------------------------------------------------------------------------------------------------------
-        # message (2020/5/25)
-        #   please, check shortcut
-        #---------------------------------------------------------------------------------------------------------
-
 
         ###================================================================================================
-        ### up-network
+        ### polynomial-coefficients-regression
         ###================================================================================================
-        cur_channels_count  = ch            # cur_channels_count: 320
-        prev_block_channels = ch            # prev_block_channels: 320
-        n_blocks            = blks-1        # n_blocks: 4, blks: 5
-        self.n_blocks       = n_blocks
 
-        ###
-        self.transUpBlocks = nn.ModuleList([])
-        self.denseBlocksUp = nn.ModuleList([])
-        self.conv1x1_up    = nn.ModuleList([])
-
-        ###
-        for i in range(n_blocks-1,-1,-1):
-            #print('-'*50)
-            #print('i:[%d]' % i)
-
-            ###------------------------------------------------------------------------------
-            ### append transition-up in self.transUpBlocks[]
-            ###------------------------------------------------------------------------------
-            self.transUpBlocks.append( TransitionUp(prev_block_channels, prev_block_channels) )         # APPEND
-            #print('  prev_block_channels:[%d]' % prev_block_channels)
+        self.fc_poly_regressor = nn.Linear(ch_list[-1], 30*7, bias=True)
 
 
-            ###------------------------------------------------------------------------------
-            ### append conv1x1 in self.conv1x1_up[]
-            ###------------------------------------------------------------------------------
-            cur_channels_count = prev_block_channels + skip_connection_channel_counts[i]
-            self.conv1x1_up.append( ConvLayer(cur_channels_count, cur_channels_count//2, kernel=1) )    # APPEND
-            #print('  cur_channels_count:[%d], skip_connection_channel_counts:[%d]' % (cur_channels_count, skip_connection_channel_counts[i]))
-            #print('  cur_channels_count//2:[%d]' % (cur_channels_count//2))
-
-
-            ###------------------------------------------------------------------------------
-            ### append HarDBlock in self.denseBlocksUp[]
-            ###------------------------------------------------------------------------------
-            cur_channels_count = cur_channels_count//2
-
-            blk = HarDBlock(cur_channels_count, gr[i], grmul, n_layers[i])
-            self.denseBlocksUp.append(blk)                                      # APPEND
-
-
-            ###------------------------------------------------------------------------------
-            ### shift
-            ###------------------------------------------------------------------------------
-            prev_block_channels = blk.get_out_ch()
-            #print('  [in] cur_channels_count: [%d]' % cur_channels_count)
-            #print('  [out] blk.get_out_ch():[%d]' % prev_block_channels)
-
-            cur_channels_count = prev_block_channels
-        #end
-
-
-        ###================================================================================================
-        ### final conv (for FC-HarDNet)
-        ###================================================================================================
-        self.finalConv = nn.Conv2d(in_channels=cur_channels_count,
-                                   out_channels=self.n_classes_seg, kernel_size=1, stride=1,
-                                   padding=0, bias=True)
-
-
-        ###================================================================================================
-        ### relu for outcome of final conv (for rpnet)
-        ###================================================================================================
-        self.relu_on_finalConv = nn.ReLU(inplace=True)
-
-        ###================================================================================================
-        ### rpnet_decoder_hmap_center (for rpnet)
-        ###================================================================================================
-        ch_in_rpnet_decoder_centerline = ch_output_fc_hardnet_a + ch_output_fc_hardnet_b
-
-
-        self.rpnet_decoder_centerline = nn.Conv2d(in_channels=ch_in_rpnet_decoder_centerline,
-                                                  out_channels=1, kernel_size=1, stride=1,
-                                                  padding=0, bias=True)
-
-        if self.n_channels_reg == 3:
-            self.rpnet_decoder_leftright  = nn.Conv2d(in_channels=ch_in_rpnet_decoder_centerline,
-                                                      out_channels=2, kernel_size=1, stride=1,
-                                                      padding=0, bias=True)
-
-
-        #------------------------------------------------------------------------------
-        # Through the above, the followings are set:
-        #   self.base
-        #   self.transUpBlocks
-        #   self.denseBlocksUp
-        #   self.conv1x1_up
-        #   self.finalConv
+        # ###================================================================================================
+        # ### up-network
+        # ###================================================================================================
+        # cur_channels_count  = ch            # cur_channels_count: 320
+        # prev_block_channels = ch            # prev_block_channels: 320
+        # n_blocks            = blks-1        # n_blocks: 4, blks: 5
+        # self.n_blocks       = n_blocks
         #
-        #   self.rpnet_decoder_hmap_center
-        #------------------------------------------------------------------------------
+        # ###
+        # self.transUpBlocks = nn.ModuleList([])
+        # self.denseBlocksUp = nn.ModuleList([])
+        # self.conv1x1_up    = nn.ModuleList([])
+        #
+        # ###
+        # for i in range(n_blocks-1,-1,-1):
+        #     #print('-'*50)
+        #     #print('i:[%d]' % i)
+        #
+        #     ###------------------------------------------------------------------------------
+        #     ### append transition-up in self.transUpBlocks[]
+        #     ###------------------------------------------------------------------------------
+        #     self.transUpBlocks.append( TransitionUp(prev_block_channels, prev_block_channels) )         # APPEND
+        #     #print('  prev_block_channels:[%d]' % prev_block_channels)
+        #
+        #
+        #     ###------------------------------------------------------------------------------
+        #     ### append conv1x1 in self.conv1x1_up[]
+        #     ###------------------------------------------------------------------------------
+        #     cur_channels_count = prev_block_channels + skip_connection_channel_counts[i]
+        #     self.conv1x1_up.append( ConvLayer(cur_channels_count, cur_channels_count//2, kernel=1) )    # APPEND
+        #     #print('  cur_channels_count:[%d], skip_connection_channel_counts:[%d]' % (cur_channels_count, skip_connection_channel_counts[i]))
+        #     #print('  cur_channels_count//2:[%d]' % (cur_channels_count//2))
+        #
+        #
+        #     ###------------------------------------------------------------------------------
+        #     ### append HarDBlock in self.denseBlocksUp[]
+        #     ###------------------------------------------------------------------------------
+        #     cur_channels_count = cur_channels_count//2
+        #
+        #     blk = HarDBlock(cur_channels_count, gr[i], grmul, n_layers[i])
+        #     self.denseBlocksUp.append(blk)                                      # APPEND
+        #
+        #
+        #     ###------------------------------------------------------------------------------
+        #     ### shift
+        #     ###------------------------------------------------------------------------------
+        #     prev_block_channels = blk.get_out_ch()
+        #     #print('  [in] cur_channels_count: [%d]' % cur_channels_count)
+        #     #print('  [out] blk.get_out_ch():[%d]' % prev_block_channels)
+        #
+        #     cur_channels_count = prev_block_channels
+        # #end
+        #
+        #
+        # ###================================================================================================
+        # ### final conv (for FC-HarDNet)
+        # ###================================================================================================
+        # self.finalConv = nn.Conv2d(in_channels=cur_channels_count,
+        #                            out_channels=self.n_classes_seg, kernel_size=1, stride=1,
+        #                            padding=0, bias=True)
+        #
+        #
+        # ###================================================================================================
+        # ### relu for outcome of final conv (for rpnet)
+        # ###================================================================================================
+        # self.relu_on_finalConv = nn.ReLU(inplace=True)
+        #
+        # ###================================================================================================
+        # ### rpnet_decoder_hmap_center (for rpnet)
+        # ###================================================================================================
+        # ch_in_rpnet_decoder_centerline = ch_output_fc_hardnet_a + ch_output_fc_hardnet_b
+        #
+        #
+        # self.rpnet_decoder_centerline = nn.Conv2d(in_channels=ch_in_rpnet_decoder_centerline,
+        #                                           out_channels=1, kernel_size=1, stride=1,
+        #                                           padding=0, bias=True)
+        #
+        # if self.n_channels_reg == 3:
+        #     self.rpnet_decoder_leftright  = nn.Conv2d(in_channels=ch_in_rpnet_decoder_centerline,
+        #                                               out_channels=2, kernel_size=1, stride=1,
+        #                                               padding=0, bias=True)
 
-        #a = 1
+
+
     #end
 
     ############################################################################################################
@@ -637,72 +645,77 @@ class rpnet_c(nn.Module):
             #end
         #end
 
+        out_seg = x
+        out_seg = F.adaptive_avg_pool2d(out_seg, (1, 1))
+        out_seg = torch.flatten(out_seg, 1)
+
+        output_poly = self.fc_poly_regressor(out_seg)
 
         ###================================================================================================
         ### up-network (for FC-HarDNet)
         ###================================================================================================
-        out_seg = x
-
-        for i in range(self.n_blocks):
-            skip = skip_connections.pop()
-            out_seg = self.transUpBlocks[i](out_seg, skip, True)
-            out_seg = self.conv1x1_up[i](out_seg)
-            out_seg = self.denseBlocksUp[i](out_seg)
-        #end
 
 
-        ###================================================================================================
-        ### insert semantic segmentation output (HDB-3U outcome) to backbone_rpnet
-        ###================================================================================================
-        backbone_rpnet = out_seg
+        # for i in range(self.n_blocks):
+        #     skip = skip_connections.pop()
+        #     out_seg = self.transUpBlocks[i](out_seg, skip, True)
+        #     out_seg = self.conv1x1_up[i](out_seg)
+        #     out_seg = self.denseBlocksUp[i](out_seg)
+        # #end
+        #
+        #
+        # ###================================================================================================
+        # ### insert semantic segmentation output (HDB-3U outcome) to backbone_rpnet
+        # ###================================================================================================
+        # backbone_rpnet = out_seg
+        #
+        #     # completed to set
+        #     #       backbone_rpnet (for rpnet)
+        #
+        #
+        # ###================================================================================================
+        # ### [FC-HarDNet] final conv
+        # ###================================================================================================
+        # out_seg = self.finalConv(out_seg)
+        #
+        #
+        # ###================================================================================================
+        # ### [rpnet] insert semantic segmentation output (final conv outcome) to backbone_rpnet
+        # ###================================================================================================
+        # out_seg_after_relu = self.relu_on_finalConv(out_seg)
+        # backbone_rpnet = torch.cat([backbone_rpnet, out_seg_after_relu], 1)
+        #
+        #     # completed to set
+        #     #       backbone_rpnet (for rpnet)
+        #
+        #
+        # ###================================================================================================
+        # ### [rpnet] rpnet_decoder_hmap_center
+        # ###================================================================================================
+        # out_centerline = self.rpnet_decoder_centerline(backbone_rpnet)
+        # if self.n_channels_reg == 3:
+        #     out_leftright  = self.rpnet_decoder_leftright(backbone_rpnet)
+        #
+        #
+        # ###================================================================================================
+        # ### [FC-HarDNet] interpolate for final result
+        # ###================================================================================================
+        # out_seg_final = F.interpolate(out_seg, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
+        #     # completed to set
+        #     #       out_seg_final
+        #
+        #
+        # ###================================================================================================
+        # ### [rpnet] interpolate for final result
+        # ###================================================================================================
+        # out_centerline_final = F.interpolate(out_centerline, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
+        # if self.n_channels_reg == 3:
+        #     out_leftright_final  = F.interpolate(out_leftright, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
 
-            # completed to set
-            #       backbone_rpnet (for rpnet)
-
-
-        ###================================================================================================
-        ### [FC-HarDNet] final conv
-        ###================================================================================================
-        out_seg = self.finalConv(out_seg)
-
-
-        ###================================================================================================
-        ### [rpnet] insert semantic segmentation output (final conv outcome) to backbone_rpnet
-        ###================================================================================================
-        out_seg_after_relu = self.relu_on_finalConv(out_seg)
-        backbone_rpnet = torch.cat([backbone_rpnet, out_seg_after_relu], 1)
-
-            # completed to set
-            #       backbone_rpnet (for rpnet)
-
-
-        ###================================================================================================
-        ### [rpnet] rpnet_decoder_hmap_center
-        ###================================================================================================
-        out_centerline = self.rpnet_decoder_centerline(backbone_rpnet)
         if self.n_channels_reg == 3:
-            out_leftright  = self.rpnet_decoder_leftright(backbone_rpnet)
-
-
-        ###================================================================================================
-        ### [FC-HarDNet] interpolate for final result
-        ###================================================================================================
-        out_seg_final = F.interpolate(out_seg, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
-            # completed to set
-            #       out_seg_final
-
-
-        ###================================================================================================
-        ### [rpnet] interpolate for final result
-        ###================================================================================================
-        out_centerline_final = F.interpolate(out_centerline, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
-        if self.n_channels_reg == 3:
-            out_leftright_final  = F.interpolate(out_leftright, size=(size_in[2], size_in[3]), mode="bilinear", align_corners=True)
-
-        if self.n_channels_reg == 3:
-            return out_seg_final, out_centerline_final, out_leftright_final
+            return output_poly                #, out_seg_final, out_centerline_final, out_leftright_final
         elif self.n_channels_reg == 1:
-            return out_seg_final, out_centerline_final
+            return output_poly                #, out_seg_final, out_centerline_final
     #end
 
 

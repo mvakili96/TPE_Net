@@ -21,7 +21,8 @@ from torch.utils                import data
 from tqdm                       import tqdm
 
 from ptsemseg.models            import get_model
-from ptsemseg.loss              import get_loss_function   ## Segmentation Loss
+from ptsemseg.loss              import get_loss_function_TPE   ## Segmentation Loss
+from ptsemseg.loss              import get_loss_function_Poly  ## Polynomail Regressor Network Loss
 from ptsemseg.loader            import get_loader
 from ptsemseg.utils             import get_logger
 from ptsemseg.metrics           import runningScore, averageMeter
@@ -36,6 +37,22 @@ from ptsemseg.loader.myhelpers  import myhelper_railsem19
 from tensorboardX               import SummaryWriter
 
 
+# def check_gradients(grad):
+#     if torch.isnan(grad).any() or torch.isinf(grad).any():
+#         print("NaN or infinity detected in gradients!")
+#         print(jojo)
+
+
+def clip_gradients(parameters, max_norm):
+    """
+    Clip gradients element-wise by the specified maximum norm.
+
+    Args:
+        parameters (Iterable[Tensor]): Iterable of parameters to clip.
+        max_norm (float): Maximum allowed value of the norm of gradients.
+    """
+    if max_norm is not None:
+        torch.nn.utils.clip_grad_norm_(parameters, max_norm)
 
 ########################################################################################################################
 ### train()
@@ -75,6 +92,7 @@ def train(cfg, writer, logger):
         "dlinknet_34": {'h': 540,  'w': 960},
         "erfnet": {'h': 540, 'w': 960},
         "bisenet_v2": {'h': 540, 'w': 960},
+        "res_101": {'h': 360, 'w': 640},
     }
     train_or_pre = True
 
@@ -166,10 +184,11 @@ def train(cfg, writer, logger):
     ###============================================================================================================
     ### (5) setup loss
     ###============================================================================================================
-    loss_fn = get_loss_function(cfg)
+    loss_fn_TPE  = get_loss_function_TPE(cfg)
+    loss_fn_Poly = get_loss_function_Poly(cfg)
 
     #print("Using loss {}".format(loss_fn))
-    logger.info("Using loss {}".format(loss_fn))
+    logger.info("Using loss {}".format(loss_fn_TPE))
 
 
 
@@ -199,6 +218,7 @@ def train(cfg, writer, logger):
     loss_accum_centerline  = 0
     loss_accum_leftright   = 0
     loss_accum_regu        = 0
+    loss_accum_poly_regression = 0
 
 
     num_loss = 0
@@ -211,7 +231,10 @@ def train(cfg, writer, logger):
         for data_batch in t_loader_batch:
             ###
             i += 1
+            # if i < 150:
+            #     continue
             start_ts = time.time()
+            print(i)
 
 
             ###
@@ -220,14 +243,16 @@ def train(cfg, writer, logger):
             gt_ins_pose                          = data_batch['gt_instances']
             gt_labelmap_centerline               = data_batch['gt_labelmap_centerline']           # (bs, 1, h_rsz, w_rsz)
             if n_channels_regression == 3:
-                gt_labelmap_leftright                = data_batch['gt_labelmap_leftright']            # (bs, 2, h_rsz, w_rsz)
-                gt_labelmap_leftright = gt_labelmap_leftright.to(device)
+                gt_labelmap_leftright            = data_batch['gt_labelmap_leftright']            # (bs, 2, h_rsz, w_rsz)
+                gt_labelmap_leftright            = gt_labelmap_leftright.to(device)
+            gt_poly_points                       = data_batch['gt_polypoints']
 
 
             imgs_raw_fl_n           = imgs_raw_fl_n.to(device)
             gt_imgs_label_seg       = gt_imgs_label_seg.to(device)
             gt_ins_pose             = gt_ins_pose.to(device)
             gt_labelmap_centerline  = gt_labelmap_centerline.to(device)
+            gt_poly_points          = gt_poly_points.to(device)
 
             ###
             scheduler.step()
@@ -237,50 +262,57 @@ def train(cfg, writer, logger):
             ###
             if cfg["model"]["arch"] != "bisenet_v2":
                 if n_channels_regression == 1:
-                    outputs_seg, outputs_centerline = model(imgs_raw_fl_n)
+                    output_poly = model(imgs_raw_fl_n)
                 elif n_channels_regression == 3:
-                    outputs_seg, outputs_centerline, outputs_leftright = model(imgs_raw_fl_n)
+                    output_poly = model(imgs_raw_fl_n)
             else:
                 if n_channels_regression == 1:
-                    outputs_seg, outputs_centerline, aux1, aux2, aux3, aux4 = model(imgs_raw_fl_n)
+                    output_poly = model(imgs_raw_fl_n)
                 elif n_channels_regression == 3:
-                    outputs_seg, outputs_centerline, outputs_leftright, aux1, aux2, aux3, aux4 = model(imgs_raw_fl_n)
+                    output_poly = model(imgs_raw_fl_n)
 
 
 
             #############################################################################
             #### CALCULATE LOSSES
             #############################################################################
-            if cfg["model"]["arch"] != "bisenet_v2":
-                loss_seg = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0, dev = device)
-            else:
-                loss_seg_unique = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val=0, dev=device)
+            # if cfg["model"]["arch"] != "bisenet_v2":
+            #     loss_seg = loss_fn_TPE(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0, dev = device)
+            # else:
+            #     loss_seg_unique = loss_fn_TPE(input=outputs_seg, target=gt_imgs_label_seg, train_val=0, dev=device)
+            #
+            #     loss_seg = loss_fn_TPE(input=aux1, target=gt_imgs_label_seg, train_val=0, dev=device) + \
+            #     loss_fn_TPE(input=aux2, target=gt_imgs_label_seg, train_val=0, dev=device) + \
+            #     loss_fn_TPE(input=aux3, target=gt_imgs_label_seg, train_val=0, dev=device) + \
+            #     loss_fn_TPE(input=aux4, target=gt_imgs_label_seg, train_val=0, dev=device) + \
+            #     loss_seg_unique
+            #     # loss_seg = loss_seg_unique
+            #
+            #
+            # loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
+            # if n_channels_regression == 1:
+            #     if train_or_pre:
+            #         loss_this = loss_seg + 0.4 * loss_centerline
+            #     else:
+            #         loss_this = loss_seg
+            # elif n_channels_regression == 3:
+            #     loss_leftright  = my_loss.L1_loss(x_est=outputs_leftright,  x_gt=gt_labelmap_leftright, n_chann = n_channels_regression)
+            #     if train_or_pre:
+            #         loss_this = loss_seg + 20.0 * loss_centerline + 0.2 * loss_leftright
+            #     else:
+            #         loss_this = loss_seg
 
-                loss_seg = loss_fn(input=aux1, target=gt_imgs_label_seg, train_val=0, dev=device) + \
-                loss_fn(input=aux2, target=gt_imgs_label_seg, train_val=0, dev=device) + \
-                loss_fn(input=aux3, target=gt_imgs_label_seg, train_val=0, dev=device) + \
-                loss_fn(input=aux4, target=gt_imgs_label_seg, train_val=0, dev=device) + \
-                loss_seg_unique
-                # loss_seg = loss_seg_unique
+            loss_this = loss_fn_Poly(output_poly,gt_poly_points.float())
 
 
-            loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
-            if n_channels_regression == 1:
-                if train_or_pre:
-                    loss_this = loss_seg + 0.4 * loss_centerline
-                else:
-                    loss_this = loss_seg
-            elif n_channels_regression == 3:
-                loss_leftright  = my_loss.L1_loss(x_est=outputs_leftright,  x_gt=gt_labelmap_leftright, n_chann = n_channels_regression)
-                if train_or_pre:
-                    loss_this = loss_seg + 20.0 * loss_centerline + 0.2 * loss_leftright
-                else:
-                    loss_this = loss_seg
-
-
-            ###
             loss_this.backward()
+            # clip_gradients(model.parameters(), max_norm=5.0)  # Clip gradients
             optimizer.step()
+
+
+
+            # for param in model.parameters():
+            #     param.register_hook(check_gradients)
 
             ###
             c_lr = scheduler.get_lr()
@@ -290,10 +322,7 @@ def train(cfg, writer, logger):
 
             ###
             loss_accum_all        += loss_this.item()
-            loss_accum_seg        += loss_seg_unique.item()
-            loss_accum_centerline += loss_centerline.item()
-            if n_channels_regression == 3:
-                loss_accum_leftright  += loss_leftright.item()
+
 
 
             num_loss += 1
@@ -331,52 +360,102 @@ def train(cfg, writer, logger):
                 loss_accum_seg_validation = 0
                 loss_accum_centerline_validation = 0
                 loss_accum_leftright_validation = 0
+                loss_accum_poly = 0
+
                 num_loss_validation = 0
-                if (i + 1) % 30000 == 0:
-                    for data_batch_validation in v_loader_batch:
+                if (i + 1) % 50000 == 0:
+                    for val_cnt, data_batch_validation in enumerate(v_loader_batch):
                         imgs_raw_fl_n          = data_batch_validation['img_raw_fl_n']                            # (bs, 3, h_rsz, w_rsz)
-                        gt_imgs_label_seg      = data_batch_validation['gt_img_label_seg']                    # (bs, h_rsz, w_rsz)
-                        gt_labelmap_centerline = data_batch_validation['gt_labelmap_centerline']         # (bs, 1, h_rsz, w_rsz)
+                        gt_imgs_label_seg      = data_batch_validation['gt_img_label_seg']                         # (bs, h_rsz, w_rsz)
+                        gt_labelmap_centerline = data_batch_validation['gt_labelmap_centerline']                  # (bs, 1, h_rsz, w_rsz)
                         if n_channels_regression == 3:
                             gt_labelmap_leftright  = data_batch_validation['gt_labelmap_leftright']
                             gt_labelmap_leftright  = gt_labelmap_leftright.to(device)
+                        gt_poly_points = data_batch_validation['gt_polypoints']
 
                         imgs_raw_fl_n          = imgs_raw_fl_n.to(device)
                         gt_imgs_label_seg      = gt_imgs_label_seg.to(device)
                         gt_labelmap_centerline = gt_labelmap_centerline.to(device)
+                        gt_poly_points         = gt_poly_points.to(device)
 
                         if cfg["model"]["arch"] != "bisenet_v2":
                             if n_channels_regression == 1:
-                                outputs_seg, outputs_centerline =  model(imgs_raw_fl_n)
+                                output_poly =  model(imgs_raw_fl_n)
                             elif n_channels_regression == 3:
-                                outputs_seg, outputs_centerline, outputs_leftright = model(imgs_raw_fl_n)
+                                output_poly = model(imgs_raw_fl_n)
                         else:
                             if n_channels_regression == 1:
-                                outputs_seg, outputs_centerline, aux1, aux2, aux3, aux4 = model(imgs_raw_fl_n)
+                                output_poly = model(imgs_raw_fl_n)
                             elif n_channels_regression == 3:
-                                outputs_seg, outputs_centerline, outputs_leftright, aux1, aux2, aux3, aux4 = model(imgs_raw_fl_n)
+                                output_poly = model(imgs_raw_fl_n)
 
 
 
-                        loss_seg = loss_fn(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0, dev = device)
-                        loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
-                        if n_channels_regression == 3:
-                            loss_leftright = my_loss.L1_loss(x_est=outputs_leftright, x_gt=gt_labelmap_leftright, n_chann = n_channels_regression)
-                            loss_accum_leftright_validation  += loss_leftright.item()
+                        # loss_seg = loss_fn_TPE(input=outputs_seg, target=gt_imgs_label_seg, train_val = 0, dev = device)
+                        # loss_centerline = my_loss.L1_loss(x_est=outputs_centerline, x_gt=gt_labelmap_centerline, n_chann = n_channels_regression, b_sigmoid=True)
+                        # if n_channels_regression == 3:
+                        #     loss_leftright = my_loss.L1_loss(x_est=outputs_leftright, x_gt=gt_labelmap_leftright, n_chann = n_channels_regression)
+                        #     loss_accum_leftright_validation  += loss_leftright.item()
 
-                        loss_accum_seg_validation        += loss_seg.item()
-                        loss_accum_centerline_validation += loss_centerline.item()
+                        loss_this = loss_fn_Poly(output_poly, gt_poly_points.float())
+
+                        loss_accum_poly        += loss_this.item()
 
                         num_loss_validation += 1
 
-                    fmt_str = "(VALIDATION) Iter [{:d}/{:d}], Loss (seg): {:.7f}, Loss (centerline): {:.7f}, Loss (leftright): {:.7f}"
+
+                        batch_size = imgs_raw_fl_n.size()[0]
+                        output_poly = output_poly.view(batch_size,30,7)
+                        for batch in range(batch_size):
+                            idx_raw_image_val = 6000 + (val_cnt*batch_size) + batch
+                            raw_img = cv2.imread("./jpgs/rs19_val" + '/rs' + f"{idx_raw_image_val:05d}" + ".jpg")
+                            raw_img = cv2.resize(raw_img, (640, 360))
+
+                            print("HI")
+
+                            for cn in range(0, 30):
+                                if output_poly[batch,cn,0] < 0:
+                                    continue
+
+                                # start_point = output_poly[batch,cn,1].detach().cpu().numpy()
+                                # end_point   = output_poly[batch, cn,2].detach().cpu().numpy()
+                                coeffs        = output_poly[batch,cn,3:].detach().cpu().numpy()
+
+                                coeffs      = np.poly1d(coeffs)
+                                print(output_poly[batch,cn,0])
+                                start_point = 350
+                                end_point   = 1
+
+                                arr_xx = np.linspace(int(end_point), int(start_point),int(start_point) - int(end_point) + 1).tolist()
+                                arr_x = np.array(arr_xx)
+                                arr_x = arr_x / 360.0
+                                arr_y = coeffs(arr_x).tolist()
+                                arr_y = np.array(arr_y)
+                                arr_y = arr_y * 640.0
+
+                                # print(arr_x)
+                                # print(arr_y)
+
+
+                                for cnt in range(len(arr_x)):
+                                    cv2.circle(raw_img, center=(int(arr_y[cnt]), int(arr_xx[cnt])),
+                                               radius=2, color=(0, 0, 255), thickness=-1)
+
+                            cv2.imshow("A", raw_img)
+                            cv2.waitKey(0)
+                            cv2.destroyAllWindows()
+
+
+
+                    fmt_str = "(VALIDATION) Iter [{:d}/{:d}], Loss (seg): {:.7f}, Loss (centerline): {:.7f}, Loss (leftright): {:.7f}, Loss (poly): {:.7f}"
 
                     print_str = fmt_str.format(
                         i + 1,
                         cfg["training"]["train_iters"],
                         loss_accum_seg_validation / num_loss_validation,
                         loss_accum_centerline_validation / num_loss_validation,
-                        loss_accum_leftright_validation  / num_loss_validation
+                        loss_accum_leftright_validation  / num_loss_validation,
+                        loss_accum_poly                  / num_loss_validation,
                     )
 
                     print(print_str)

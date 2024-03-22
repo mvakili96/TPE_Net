@@ -1,15 +1,17 @@
 model:
-    arch: bisenet_v2
+    arch: res_101
 weight_init_t:
     rpnet_c: '../runs/hardnet/cur/MybestSoFar.pkl'
     dlinknet_34: '../runs/hardnet/cur/Mybest_19600.pkl'
     erfnet: '../runs/hardnet/cur/Mybest_6000.pkl'
     bisenet_v2: '../runs/hardnet/cur/Mybest_20000.pkl'
+    res_101: -1
 weight_init_p:
     rpnet_c: '../runs/hardnet/cur/hardnet_best.pkl'
     dlinknet_34: -1
     erfnet: '../runs/hardnet/cur/erfnet.pth'
     bisenet_v2: -1
+    res_101: -1
 data:
     dataset: railsem19_seg_triplet_b
     train_split: train
@@ -22,27 +24,36 @@ training:
     num_seg_classes: 3
     num_reg_channels: 1
     train_iters: 90000
-    batch_size: 8
+    batch_size: 16
     val_interval: 100
     n_workers: 0
     print_interval: 100
     optimizer:
-        name: 'sgd'
+        name: 'adam'
         adam:
-            lr: 0.025
+            lr: 3.0e-4
             weight_decay: 0.0005
         sgd:
             lr: 0.001
             weight_decay: 0.0005
             momentum: 0.9
-    loss:
+    loss_TPE:
         name: 'bootstrapped_cross_entropy'
         min_K: 8192
         loss_th: 0.3
         size_average: True
         train_val: 0
+    loss_Poly:
+        name: 'loss_poly'
+        conf_weight: 1
+        lower_weight: 1
+        upper_weight: 1
+        cls_weight: 0
+        poly_weight: 300
+
+
     lr_schedule: 
-        name: 'poly_lr'
-        max_iter: 90000
+        name: "cosine_annealing"
+        T_max: 385
     resume: None
     finetune: None
